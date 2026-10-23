@@ -1,0 +1,1806 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>EU4 Fortress Layout Optimizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+SC:wght@600;700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: map-room workbench — toolbar on top, the map canvas takes the stage, a tabbed side panel on the right (stacks below on phones). */
+:root {
+  --bg: #eef0f2;
+  --surface: #ffffff;
+  --surface-2: #f5f6f8;
+  --line: #d4d9de;
+  --fg: #1b232b;
+  --muted: #5d6974;
+  --accent: #1f5f7a;      /* fortress steel-blue */
+  --accent-fg: #ffffff;
+  --accent-soft: #dbe9ef;
+  --brass: #9a7224;
+  --danger: #b23a32;
+  --warn: #8a6510;
+  --ok: #2e7d3a;
+  --stage: #20262c;
+  --font-display: "Cormorant SC", "Cormorant", Georgia, serif;
+  --font-body: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --r: 6px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14191e; --surface: #1b2228; --surface-2: #222a31; --line: #323c45;
+    --fg: #e3e8ec; --muted: #94a1ac; --accent: #5fa8c8; --accent-fg: #0d1a20;
+    --accent-soft: #1d3440; --brass: #d0a54f; --danger: #e0756c; --warn: #d9b25a;
+    --ok: #6cc07a; --stage: #0e1216; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14191e; --surface: #1b2228; --surface-2: #222a31; --line: #323c45;
+  --fg: #e3e8ec; --muted: #94a1ac; --accent: #5fa8c8; --accent-fg: #0d1a20;
+  --accent-soft: #1d3440; --brass: #d0a54f; --danger: #e0756c; --warn: #d9b25a;
+  --ok: #6cc07a; --stage: #0e1216; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.45 var(--font-body); display: flex; flex-direction: column; }
+[hidden] { display: none !important; }
+button, select, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- toolbar ---------- */
+.bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  padding-block: 8px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: var(--surface); border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: baseline; gap: 8px; margin-right: 6px; }
+.brand b { font-family: var(--font-display); font-size: 1.45rem; letter-spacing: .02em; color: var(--fg); line-height: 1; }
+.brand small { color: var(--muted); font-size: .78rem; letter-spacing: .06em; text-transform: uppercase; }
+.group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sep { width: 1px; align-self: stretch; background: var(--line); }
+.spacer { flex: 1; }
+.btn {
+  appearance: none; border: 1px solid var(--line); background: var(--surface-2);
+  padding: 5px 11px; border-radius: var(--r); cursor: pointer; white-space: nowrap; font-size: .9rem;
+}
+.btn:hover:not(:disabled) { border-color: var(--accent); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+.btn.small { padding: 2px 8px; font-size: .82rem; }
+.btn.danger { color: var(--danger); }
+label.inline { display: flex; align-items: center; gap: 6px; font-size: .9rem; color: var(--muted); }
+select, input[type=text], input[type=number], input[type=search], textarea {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 4px 8px;
+}
+select { padding-right: 4px; }
+
+/* ---------- workspace ---------- */
+.work { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 380px; }
+.stage { position: relative; background: var(--stage); min-width: 0; min-height: 0; overflow: hidden; }
+#view { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; display: block; }
+#view.grabbing { cursor: grabbing; }
+.hud {
+  position: absolute; left: 10px; bottom: 10px; max-width: calc(100% - 20px);
+  background: color-mix(in srgb, var(--surface) 88%, transparent); border: 1px solid var(--line);
+  padding: 3px 9px; border-radius: var(--r); font: 12.5px/1.4 var(--font-mono);
+  pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.legend {
+  position: absolute; right: 10px; top: 10px; display: grid; gap: 3px; font-size: .8rem;
+  background: color-mix(in srgb, var(--surface) 90%, transparent); border: 1px solid var(--line);
+  padding: 7px 10px; border-radius: var(--r); pointer-events: none;
+}
+.legend span { display: flex; align-items: center; gap: 7px; }
+.sw { width: 13px; height: 13px; border-radius: 2px; border: 1px solid rgba(0,0,0,.35); flex: none; }
+.sw.hatch { background: repeating-linear-gradient(45deg, rgb(60,200,60) 0 3px, #fff 3px 6px); }
+
+/* empty state */
+.empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; overflow: auto; }
+.drop {
+  width: min(560px, 100%); background: var(--surface); border: 2px dashed var(--line);
+  border-radius: 10px; padding: 26px 26px 22px; display: grid; gap: 14px;
+}
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop h1 { margin: 0; font-family: var(--font-display); font-size: 2rem; line-height: 1.05; text-wrap: balance; }
+.drop p { margin: 0; color: var(--muted); max-width: 62ch; }
+.drop code, .mono { font-family: var(--font-mono); font-size: .84em; }
+.drop .paths { font: 12.5px/1.6 var(--font-mono); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; overflow-x: auto; white-space: nowrap; }
+.drop .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.privacy { font-size: .85rem; color: var(--ok) !important; }
+.loading { color: var(--fg) !important; font-family: var(--font-mono); font-size: .85rem; }
+
+/* ---------- side panel ---------- */
+.panel { background: var(--surface); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.tabs { display: flex; border-bottom: 1px solid var(--line); }
+.tabs button {
+  flex: 1; appearance: none; border: 0; background: none; padding: 10px 6px; cursor: pointer;
+  font-size: .8rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted);
+  border-bottom: 2px solid transparent;
+}
+.tabs button[aria-selected=true] { color: var(--fg); border-bottom-color: var(--brass); }
+.pane { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px 18px; display: grid; align-content: start; gap: 14px; }
+.pane h2 { margin: 0; font-family: var(--font-display); font-size: 1.5rem; line-height: 1.1; text-wrap: balance; }
+.muted { color: var(--muted); }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: .9rem; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.chip { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: .78rem; font-weight: 700; letter-spacing: .04em; }
+.chip.water { background: rgb(50,100,200); color: #fff; }
+.chip.waste { background: #111; color: #eee; }
+.chip.fort { background: rgb(60,200,60); color: #0b2b0b; }
+.nbrs { display: flex; flex-wrap: wrap; gap: 5px; }
+.nbrs button { appearance: none; border: 1px solid var(--line); background: var(--surface-2); border-radius: 4px; padding: 2px 7px; font-size: .82rem; cursor: pointer; }
+.nbrs button:hover { border-color: var(--accent); }
+.nbrs button .mono { color: var(--muted); }
+.fortline { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sublabel { font-size: .74rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+/* optimize form */
+.field { display: grid; gap: 4px; }
+.field-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.field-head label { font-weight: 600; font-size: .92rem; }
+.field textarea { width: 100%; min-height: 66px; resize: vertical; font: 12.5px/1.45 var(--font-mono); }
+.field textarea#f-coverage { min-height: 96px; }
+.hint { font-size: .78rem; color: var(--muted); }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: middle; }
+.msgs { display: grid; gap: 6px; }
+.msg { border: 1px solid var(--line); border-left-width: 4px; border-radius: var(--r); padding: 7px 10px; font-size: .86rem; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-2); }
+.msg.error { border-left-color: var(--danger); }
+.msg.warn { border-left-color: var(--warn); }
+.msg.ok { border-left-color: var(--ok); }
+.msg .row { margin-top: 6px; }
+.results table { width: 100%; border-collapse: collapse; font-size: .86rem; font-variant-numeric: tabular-nums; }
+.results th { text-align: left; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); padding: 3px 4px; }
+.results td { padding: 3px 4px; border-bottom: 1px solid var(--line); }
+.results tr { cursor: pointer; }
+.results tr:hover td { background: var(--accent-soft); }
+.spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; margin-right: 6px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+
+.defbox { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px 12px; margin: 0; display: grid; gap: 8px; background: var(--surface-2); min-width: 0; }
+.defbox legend { font-weight: 700; font-size: .92rem; padding: 0 4px; color: var(--brass); }
+.defbox select { width: 100%; }
+.weights { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.weights label { display: grid; gap: 3px; font-size: .8rem; color: var(--muted); }
+.weights input { width: 100%; }
+.ramp { width: 120px; height: 10px; border-radius: 2px; border: 1px solid rgba(0,0,0,.35); background: linear-gradient(90deg, rgb(244,240,226), rgb(214,170,96), rgb(150,74,32), rgb(70,30,20)); }
+
+/* tree */
+.tree { font-size: .88rem; }
+.tree details { margin-left: 12px; }
+.tree > details { margin-left: 0; }
+.tree summary { cursor: pointer; padding: 1px 0; overflow-wrap: anywhere; }
+.tree summary .n { color: var(--muted); font-size: .8em; margin-left: 4px; }
+.tree .leaf { display: block; width: 100%; text-align: left; margin-left: 12px; appearance: none; border: 0; background: none; padding: 1px 4px; cursor: pointer; border-radius: 3px; overflow-wrap: anywhere; }
+.tree .leaf:hover { background: var(--accent-soft); }
+.tag { color: var(--muted); font-size: .8em; }
+
+@media (max-width: 860px) {
+  .work { grid-template-columns: 1fr; grid-template-rows: minmax(320px, 58vh) auto; }
+  body { height: auto; min-height: 100%; }
+  .panel { border-left: 0; border-top: 1px solid var(--line); }
+  .pane { overflow: visible; }
+  .brand small { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand"><b>EU4FLO</b><small data-i18n="app.subtitle">Fortress Layout Optimizer</small></div>
+  <div class="group">
+    <button class="btn primary" id="btn-folder" data-i18n="main.btn.load">Load game or mod folder</button>
+    <input type="file" id="in-folder" webkitdirectory directory multiple hidden>
+    <input type="file" id="in-files" multiple hidden>
+    <input type="file" id="in-extra" webkitdirectory directory multiple hidden>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
+    <label class="inline" for="sel-mode"><span data-i18n="main.mode.label">Mode:</span>
+      <select id="sel-mode" disabled>
+        <option value="province" data-i18n="main.mode.province">Provinces</option>
+        <option value="area" data-i18n="main.mode.area">Area</option>
+        <option value="region" data-i18n="main.mode.region">Region</option>
+        <option value="superregion" data-i18n="main.mode.superregion">Superregion</option>
+        <option value="forts" data-i18n="main.mode.forts">Forts</option>
+        <option value="defense" data-i18n="main.mode.defense">Defense (terrain + salt)</option>
+        <option value="optimization" data-i18n="main.mode.optimization">Optimization</option>
+      </select>
+    </label>
+    <button class="btn" id="btn-reset-view" disabled data-i18n="main.btn.reset_view">Reset view</button>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
+    <button class="btn" id="btn-export" disabled data-i18n="main.btn.export">Export adjacency</button>
+    <button class="btn" id="btn-save-map" disabled data-i18n="main.btn.save_map">Save map (PNG)</button>
+    <button class="btn" id="btn-save-view" disabled data-i18n="main.btn.save_view">Save view (PNG)</button>
+  </div>
+  <div class="spacer"></div>
+  <label class="inline" for="sel-lang"><span data-i18n="menu.language">Language:</span>
+    <select id="sel-lang"><option value="en">English</option><option value="ru">Русский</option></select>
+  </label>
+</header>
+
+<main class="work">
+  <section class="stage" id="stage">
+    <canvas id="view"></canvas>
+    <div class="empty" id="empty">
+      <div class="drop" id="drop">
+        <h1 data-i18n="app.title">EU4 Fortress Layout Optimizer</h1>
+        <p data-i18n="empty.lead">Pick the map/ folder of Europa Universalis IV or of a mod. You can also drag the folder onto this box.</p>
+        <div class="paths">…/steamapps/common/Europa Universalis IV<br>…/steamapps/workshop/content/236850/&lt;mod id&gt;  (Anbennar etc.)</div>
+        <div class="actions">
+          <button class="btn primary" id="btn-folder-2" data-i18n="main.btn.load">Load game or mod folder</button>
+          <button class="btn" id="btn-files" data-i18n="empty.files">Choose individual files</button>
+        </div>
+        <p data-i18n="empty.needs">Needed: map/provinces.bmp and map/definition.csv. Used if present: the other map/ files (area, region, superregion, default.map, climate, adjacencies, terrain, forts.txt), history/provinces for salt and common/tradegoods.</p>
+        <p class="privacy" data-i18n="empty.privacy">Your game files are read inside your browser and never leave your computer. If the browser asks whether to "upload" the folder, that only grants this page read access.</p>
+        <p class="loading" id="load-status" hidden></p>
+      </div>
+    </div>
+    <div class="legend" id="legend" hidden></div>
+    <div class="hud" id="hud" hidden></div>
+  </section>
+
+  <aside class="panel">
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-info" aria-selected="true" data-pane="pane-info" data-i18n="tab.info">Province</button>
+      <button role="tab" id="tab-opt" aria-selected="false" data-pane="pane-opt" data-i18n="tab.opt">Optimize</button>
+      <button role="tab" id="tab-tree" aria-selected="false" data-pane="pane-tree" data-i18n="tab.tree">Tree</button>
+    </div>
+
+    <!-- Province info -->
+    <div class="pane" id="pane-info" role="tabpanel">
+      <div id="info-empty" class="muted" data-i18n="info.hint">Load a map, then click a province to see its details.</div>
+      <div id="info" hidden style="display:grid;gap:14px">
+        <div>
+          <div class="sublabel" id="i-title">Province</div>
+          <h2 id="i-name">—</h2>
+        </div>
+        <dl class="kv">
+          <dt data-i18n="info.field.id">Province id</dt><dd id="i-id" class="mono"></dd>
+          <dt data-i18n="info.field.area">Area</dt><dd id="i-area"></dd>
+          <dt data-i18n="info.field.region">Region</dt><dd id="i-region"></dd>
+          <dt data-i18n="info.field.superregion">Superregion</dt><dd id="i-super"></dd>
+          <dt data-i18n="info.field.terrain" class="defrow">Terrain</dt><dd id="i-terrain" class="defrow"></dd>
+          <dt data-i18n="info.field.penalty" class="defrow">Attacker penalty</dt><dd id="i-pen" class="defrow"></dd>
+          <dt data-i18n="info.field.localdef" class="defrow">Local defensiveness</dt><dd id="i-loc" class="defrow"></dd>
+          <dt data-i18n="info.field.good" class="defrow">Trade good</dt><dd id="i-good" class="defrow"></dd>
+          <dt data-i18n="info.field.score" class="defrow">Defense score</dt><dd id="i-score" class="defrow"></dd>
+        </dl>
+        <div id="i-status"></div>
+        <label class="fortline" id="i-fortline"><input type="checkbox" id="i-fort"> <span data-i18n="info.fort_label">Has a fort (forts.txt)</span></label>
+        <div class="row" id="i-actions">
+          <button class="btn small" id="i-add-cov" data-i18n="info.btn.add_coverage">Add to coverage</button>
+          <button class="btn small" id="i-add-req" data-i18n="info.btn.add_required">Add to required</button>
+        </div>
+        <div id="i-nbr-wrap" style="display:grid;gap:6px">
+          <div class="sublabel" data-i18n="info.neighbors">Neighbours</div>
+          <div class="nbrs" id="i-nbrs"></div>
+        </div>
+        <div style="display:grid;gap:6px">
+          <div class="sublabel">forts.txt</div>
+          <div class="row">
+            <button class="btn small" id="btn-forts-dl" data-i18n="forts.download">Download forts.txt</button>
+            <span class="hint" id="forts-count"></span>
+          </div>
+          <div class="hint" data-i18n="forts.note">Fort edits are kept in this browser. Download the file and put it in your map/ folder to use it elsewhere.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Optimization -->
+    <div class="pane" id="pane-opt" role="tabpanel" hidden>
+      <h2 data-i18n="opt.title">Fort Coverage Optimization</h2>
+
+      <div class="field">
+        <div class="field-head"><label for="f-coverage"><span class="dot" style="background:rgb(80,220,80)"></span><span data-i18n="opt.field.coverage">Coverage provinces</span></label>
+          <button class="btn small" data-preview="coverage" data-i18n="opt.btn.show_on_map">Show on map</button></div>
+        <textarea id="f-coverage" spellcheck="false" placeholder="region, west_castanor_region&#10;area, cursewood_area&#10;province, 229"></textarea>
+        <div class="hint" data-i18n="opt.field.coverage.hint">province, Name_or_ID / area, Area_Name / region, Region_Name / superregion, Superregion_Name (one per line)</div>
+      </div>
+
+      <div class="field">
+        <div class="field-head"><label for="f-required"><span class="dot" style="background:rgb(220,60,60)"></span><span data-i18n="opt.field.required">Required forts</span></label>
+          <button class="btn small" data-preview="required" data-i18n="opt.btn.show_on_map">Show on map</button></div>
+        <textarea id="f-required" spellcheck="false"></textarea>
+        <div class="hint" data-i18n="opt.hint.ids">IDs separated by comma, space, or newline. Lines starting with # are comments.</div>
+      </div>
+
+      <div class="field">
+        <div class="field-head"><label for="f-preferred"><span class="dot" style="background:rgb(240,150,50)"></span><span data-i18n="opt.field.preferred">Preferred forts</span></label>
+          <button class="btn small" data-preview="preferred" data-i18n="opt.btn.show_on_map">Show on map</button></div>
+        <textarea id="f-preferred" spellcheck="false"></textarea>
+        <div class="hint" data-i18n="opt.hint.preferred">Used only to break ties between equally small solutions.</div>
+      </div>
+
+      <div class="field">
+        <div class="field-head"><label for="f-excluded"><span class="dot" style="background:rgb(150,60,200)"></span><span data-i18n="opt.field.excluded">Exceptional (Homebrew)</span></label>
+          <button class="btn small" data-preview="excluded" data-i18n="opt.btn.show_on_map">Show on map</button></div>
+        <textarea id="f-excluded" spellcheck="false"></textarea>
+        <div class="hint" data-i18n="opt.hint.excluded">In Homebrew mode these provinces may have a fort next to another fort.</div>
+      </div>
+
+      <div class="field">
+        <div class="field-head"><label for="f-groups"><span class="dot" style="background:rgb(240,130,200)"></span><span data-i18n="opt.field.groups">Groups</span></label>
+          <button class="btn small" data-preview="groups" data-i18n="opt.btn.show_on_map">Show on map</button></div>
+        <textarea id="f-groups" spellcheck="false" placeholder="Falsemire : 762, 761, 759 : 1"></textarea>
+        <div class="hint" data-i18n="opt.hint.groups">Group_Name : p1, p2, ... : MinForts (one group per line, names must be unique)</div>
+      </div>
+
+      <div class="field">
+        <label for="f-mode" style="font-weight:600;font-size:.92rem" data-i18n="opt.field.mode">Adjacency mode</label>
+        <select id="f-mode">
+          <option value="NoAdjacent" data-i18n="opt.mode.no_adjacent">Forbid forts in adjacent provinces</option>
+          <option value="Homebrew" data-i18n="opt.mode.homebrew">Homebrew (allow only for exceptional provinces)</option>
+          <option value="AnyAdjacent" data-i18n="opt.mode.any">Allow any adjacent forts</option>
+        </select>
+      </div>
+
+      <fieldset class="defbox">
+        <legend data-i18n="def.title">Terrain and salt</legend>
+        <select id="f-terrain" aria-label="Terrain priority">
+          <option value="tiebreak" data-i18n="def.mode.tiebreak">Fewest forts, then the most defensible provinces</option>
+          <option value="off" data-i18n="def.mode.off">Ignore terrain (original behaviour)</option>
+        </select>
+        <div class="weights">
+          <label for="f-w-pen"><span data-i18n="def.w.pen">Points per attacker penalty pip</span>
+            <input type="number" id="f-w-pen" min="0" step="1" value="10"></label>
+          <label for="f-w-loc"><span data-i18n="def.w.loc">Points per 1% local defensiveness</span>
+            <input type="number" id="f-w-loc" min="0" step="0.5" value="1"></label>
+        </div>
+        <div class="hint" data-i18n="def.hint">Defense score = attacker penalty × first weight + local defensiveness (terrain + salt) × second weight. Mountains score 2×10 + 25 = 45, hills 1×10 + 10 = 20, salt adds 10.</div>
+        <div class="hint" id="def-status"></div>
+      </fieldset>
+
+      <label class="inline" for="f-time"><span data-i18n="opt.field.time">Time limit (seconds)</span>
+        <input type="number" id="f-time" min="1" max="600" value="10" style="width:5.5em"></label>
+
+      <div class="row">
+        <button class="btn primary" id="btn-run" data-i18n="opt.btn.run">Run optimization</button>
+        <button class="btn danger" id="btn-stop" hidden data-i18n="opt.btn.stop">Stop</button>
+        <button class="btn" id="btn-reset-opt" data-i18n="opt.btn.reset">Reset coloring</button>
+      </div>
+      <div class="row">
+        <button class="btn small" id="btn-save-cfg" data-i18n="opt.btn.save_config">Save config</button>
+        <button class="btn small" id="btn-load-cfg" data-i18n="opt.btn.load_config">Load config</button>
+        <button class="btn small" id="btn-example" data-i18n="opt.btn.example">Anbennar example</button>
+        <input type="file" id="in-cfg" accept=".json,application/json" hidden>
+      </div>
+
+      <div class="msgs" id="msgs" aria-live="polite"></div>
+      <div class="results" id="results" hidden></div>
+    </div>
+
+    <!-- Tree -->
+    <div class="pane" id="pane-tree" role="tabpanel" hidden>
+      <h2 data-i18n="tree.title">Province Tree</h2>
+      <input type="search" id="tree-search" data-i18n-ph="tree.search" placeholder="Search name or id…">
+      <div id="tree-results" class="tree" hidden></div>
+      <div id="tree" class="tree"><span class="muted" data-i18n="msg.load_first">Load the map first.</span></div>
+    </div>
+  </aside>
+</main>
+
+<script>
+'use strict';
+/* =====================================================================
+   Localization
+   ===================================================================== */
+const I18N = {
+  en: {
+    'app.title': 'EU4 Fortress Layout Optimizer',
+    'app.subtitle': 'Fortress Layout Optimizer',
+    'menu.language': 'Language:',
+    'main.mode.label': 'Mode:',
+    'main.btn.load': 'Load game or mod folder',
+    'main.btn.export': 'Export adjacency',
+    'main.btn.save_map': 'Save map (PNG)',
+    'main.btn.save_view': 'Save view (PNG)',
+    'main.btn.reset_view': 'Reset view',
+    'main.mode.province': 'Provinces', 'main.mode.area': 'Area', 'main.mode.region': 'Region',
+    'main.mode.superregion': 'Superregion', 'main.mode.forts': 'Forts', 'main.mode.optimization': 'Optimization',
+    'empty.lead': 'Pick the Europa Universalis IV folder or a mod folder (the one that contains map/ and history/). Picking just map/ also works, but then salt is unknown. You can also drag the folder onto this box.',
+    'empty.files': 'Choose individual files',
+    'empty.needs': 'Needed: map/provinces.bmp and map/definition.csv. Used if present: the other map/ files (area, region, superregion, default.map, climate, adjacencies, terrain, forts.txt), history/provinces for salt and common/tradegoods.',
+    'empty.privacy': 'Your game files are read inside your browser and never leave your computer. If the browser asks whether to "upload" the folder, that only grants this page read access.',
+    'load.reading': 'Reading {0}…', 'load.pixels': 'Mapping {0} × {1} pixels to provinces…',
+    'load.adjacency': 'Computing adjacency…', 'load.render': 'Drawing the map…',
+    'main.load.missing_files': 'definition.csv or provinces.bmp not found in the selected folder.',
+    'main.load.summary': 'Loaded {5}: {0} provinces, {1} areas, {2} regions, {3} superregions, {4} forts.',
+    'load.failed': 'Could not load the map: {0}',
+    'tab.info': 'Province', 'tab.opt': 'Optimize', 'tab.tree': 'Tree',
+    'info.hint': 'Click a province on the map to see its details.',
+    'info.header': 'Province',
+    'info.field.id': 'Province id', 'info.field.area': 'Area', 'info.field.region': 'Region', 'info.field.superregion': 'Superregion',
+    'info.fort_label': 'Has a fort (forts.txt)',
+    'info.neighbors': 'Neighbours', 'info.no_neighbors': 'No land neighbours.',
+    'info.status.water': 'Water', 'info.status.wasteland': 'Wasteland', 'info.status.fort': 'Fort',
+    'info.unknown': '(unknown)', 'info.unnamed': '(unnamed)',
+    'info.btn.add_coverage': 'Add to coverage', 'info.btn.add_required': 'Add to required',
+    'forts.download': 'Download forts.txt', 'forts.count': '{0} forts',
+    'forts.note': 'Fort edits are kept in this browser. Download the file and put it in your map/ folder to use it elsewhere.',
+    'opt.title': 'Fort Coverage Optimization',
+    'opt.field.coverage': 'Coverage provinces',
+    'opt.field.coverage.hint': 'province, Name_or_ID / area, Area_Name / region, Region_Name / superregion, Superregion_Name (one per line)',
+    'opt.field.required': 'Required forts', 'opt.field.preferred': 'Preferred forts',
+    'opt.field.excluded': 'Exceptional (Homebrew)', 'opt.field.groups': 'Groups', 'opt.field.mode': 'Adjacency mode',
+    'opt.field.time': 'Time limit (seconds)',
+    'opt.hint.ids': 'IDs separated by comma, space, or newline. Lines starting with # are comments.',
+    'opt.hint.preferred': 'Used only to break ties between equally small solutions.',
+    'opt.hint.excluded': 'In Homebrew mode these provinces may have a fort next to another fort.',
+    'opt.hint.groups': 'Group_Name : p1, p2, ... : MinForts (one group per line, names must be unique)',
+    'opt.mode.no_adjacent': 'Forbid forts in adjacent provinces',
+    'opt.mode.homebrew': 'Homebrew (allow only for exceptional provinces)',
+    'opt.mode.any': 'Allow any adjacent forts',
+    'opt.btn.show_on_map': 'Show on map', 'opt.btn.run': 'Run optimization', 'opt.btn.stop': 'Stop',
+    'opt.btn.reset': 'Reset coloring', 'opt.btn.save_config': 'Save config', 'opt.btn.load_config': 'Load config',
+    'opt.btn.example': 'Anbennar example', 'opt.btn.whole_map': 'Optimize the whole map', 'opt.btn.copy': 'Copy IDs',
+    'opt.btn.to_required': 'Use as required forts',
+    'opt.output.count': 'Forts in solution: {0}', 'opt.output.id': 'ID', 'opt.output.name': 'Name', 'opt.output.role': 'Role',
+    'opt.role.required': 'required', 'opt.role.preferred': 'preferred', 'opt.role.exceptional': 'exceptional', 'opt.role.group': 'group', 'opt.role.default': '—',
+    'opt.msg.parse_errors': 'Fix these lines first:',
+    'opt.msg.empty_coverage_warning': 'The coverage list is empty. Optimizing the ENTIRE map can take a long time and may stop at the time limit.',
+    'opt.msg.complete': 'Optimal layout found: {0} forts ({1} s).',
+    'opt.msg.running': 'Solving {0} candidate provinces…',
+    'opt.msg.stopped': 'Stopped.',
+    'opt.msg.no_valid_coverage': 'Your coverage input did not contain any land provinces (perhaps only water or wasteland).',
+    'opt.msg.copied': 'Copied {0} IDs.',
+    'opt.msg.worker_failed': 'The solver could not start: {0}. If you opened index.html directly from disk, serve the folder over http instead (see README).',
+    'solver.warn.uncovered': 'These provinces cannot be covered by any candidate fort: {0}.',
+    'solver.warn.group_min': "Group '{0}' has fewer usable provinces than its minimum of {1}.",
+    'solver.warn.group_outside': "Group '{0}': provinces {1} are outside the coverage and ignored.",
+    'solver.warn.required_not_in_candidates': 'Required fort {0} is water or wasteland.',
+    'solver.warn.time_limit': 'Time limit reached after {1} s: this layout uses {0} forts but might not be the minimum. Raise the time limit or shrink the coverage.',
+    'solver.warn.no_solution_time': 'Time limit reached before any valid layout was found. Raise the time limit or shrink the coverage.',
+    'solver.warn.failed': 'No valid layout exists ({0}). The constraints cannot all be satisfied.',
+    'solver.warn.exception': 'Solver error: {0}',
+    'parser.bad_line': 'Bad line: {0}', 'parser.unknown_province': 'Unknown province: {0}',
+    'parser.unknown_area': 'Unknown area: {0}', 'parser.unknown_region': 'Unknown region: {0}',
+    'parser.unknown_superregion': 'Unknown superregion: {0}', 'parser.unknown_selector': 'Unknown selector: {0}',
+    'parser.bad_group': 'Bad group: {0}', 'parser.bad_group_min': 'Bad minimum in group: {0}',
+    'msg.load_first': 'Load the map first.',
+    'map.warn_duplicate_colors': 'Several provinces share a colour in definition.csv; the first one is used: {0}',
+    'tree.title': 'Province Tree', 'tree.search': 'Search name or id…',
+    'tree.orphan.regions': '(regions without superregion)', 'tree.orphan.areas': '(areas without region)',
+    'tree.orphan.provinces': '(provinces without area)', 'tree.tag.water': '[water]', 'tree.tag.wasteland': '[wasteland]',
+    'tree.more': '…and {0} more',
+    'legend.fort': 'Fort', 'legend.covered': 'Covered by a neighbouring fort', 'legend.water': 'Water', 'legend.waste': 'Wasteland',
+    'legend.required': 'Required', 'legend.preferred': 'Preferred', 'legend.exceptional': 'Exceptional', 'legend.group': 'In a group', 'legend.default': 'Other fort',
+    'main.mode.defense': 'Defense (terrain + salt)',
+    'load.terrain': 'Reading terrain…', 'load.history': 'Reading province history {0}…',
+    'info.field.terrain': 'Terrain', 'info.field.penalty': 'Attacker penalty', 'info.field.localdef': 'Local defensiveness',
+    'info.field.good': 'Trade good', 'info.field.score': 'Defense score',
+    'def.title': 'Terrain and salt',
+    'def.mode.tiebreak': 'Fewest forts, then the most defensible provinces',
+    'def.mode.off': 'Ignore terrain (original behaviour)',
+    'def.w.pen': 'Points per attacker penalty pip', 'def.w.loc': 'Points per 1% local defensiveness',
+    'def.hint': 'Defense score = attacker penalty × first weight + local defensiveness (terrain + salt) × second weight. With the defaults mountains score 2×10 + 25 = 45, hills 1×10 + 10 = 20, and salt adds 10. The fort count always stays minimal; the score only decides between equally small layouts.',
+    'def.src.override': 'terrain.txt', 'def.src.bmp': 'estimated from terrain.bmp',
+    'def.terrain_part': 'terrain {0}%', 'def.good_part': '{1} {0}%',
+    'def.no_history_short': '(history/ not loaded)',
+    'def.no_terrain': 'terrain.txt was not found, so terrain is ignored.',
+    'def.terrain_status': 'Terrain: {0} provinces from terrain.txt, {1} estimated from terrain.bmp.',
+    'def.terrain_missing': '{0} land provinces have no terrain.',
+    'def.no_history': 'Trade goods unknown: load the game or mod folder (with history/provinces) to include salt.',
+    'def.add_history': 'Add history/ folder',
+    'def.history_status': 'Trade goods from {0} history files:',
+    'def.good_count': '{0} {1}', 'def.no_bonus_goods': 'no defensive trade goods found.',
+    'def.goods_default': 'common/tradegoods not loaded, using salt = +10%.',
+    'def.msg.done': 'Terrain: total defense score {0} (fewest-forts layout alone scored {1}).',
+    'def.msg.partial': 'Terrain step stopped early ({0}); total defense score {1} may not be the best possible.',
+    'def.total': 'defense {0}',
+    'opt.output.defense': 'Defense',
+  },
+  ru: {
+    'main.mode.defense': 'Оборона (рельеф + соль)',
+    'load.terrain': 'Чтение рельефа…', 'load.history': 'Чтение истории провинций {0}…',
+    'info.field.terrain': 'Рельеф', 'info.field.penalty': 'Штраф атакующему', 'info.field.localdef': 'Местная обороноспособность',
+    'info.field.good': 'Товар', 'info.field.score': 'Очки обороны',
+    'def.title': 'Рельеф и соль',
+    'def.mode.tiebreak': 'Минимум крепостей, затем самые защищённые провинции',
+    'def.mode.off': 'Не учитывать рельеф (как раньше)',
+    'def.w.pen': 'Очков за 1 пункт штрафа атакующему', 'def.w.loc': 'Очков за 1% местной обороноспособности',
+    'def.hint': 'Очки обороны = штраф атакующему × первый вес + местная обороноспособность (рельеф + соль) × второй вес. По умолчанию горы дают 2×10 + 25 = 45, холмы 1×10 + 10 = 20, соль добавляет 10. Число крепостей всегда минимально; очки лишь выбирают между одинаково малыми раскладками.',
+    'def.src.override': 'terrain.txt', 'def.src.bmp': 'оценка по terrain.bmp',
+    'def.terrain_part': 'рельеф {0}%', 'def.good_part': '{1} {0}%',
+    'def.no_history_short': '(history/ не загружена)',
+    'def.no_terrain': 'terrain.txt не найден, рельеф не учитывается.',
+    'def.terrain_status': 'Рельеф: {0} провинций из terrain.txt, {1} оценено по terrain.bmp.',
+    'def.terrain_missing': 'У {0} сухопутных провинций нет рельефа.',
+    'def.no_history': 'Товары неизвестны: загрузите папку игры или мода (с history/provinces), чтобы учитывать соль.',
+    'def.add_history': 'Добавить папку history/',
+    'def.history_status': 'Товары из {0} файлов истории:',
+    'def.good_count': '{1}: {0}', 'def.no_bonus_goods': 'оборонных товаров не найдено.',
+    'def.goods_default': 'common/tradegoods не загружена, соль = +10%.',
+    'def.msg.done': 'Рельеф: сумма очков обороны {0} (раскладка без учёта рельефа давала {1}).',
+    'def.msg.partial': 'Шаг с рельефом остановлен досрочно ({0}); сумма очков {1} может быть не лучшей.',
+    'def.total': 'оборона {0}',
+    'opt.output.defense': 'Оборона',
+    'app.title': 'Оптимизатор расположения крепостей EU4',
+    'app.subtitle': 'Оптимизатор крепостей',
+    'menu.language': 'Язык:',
+    'main.mode.label': 'Режим:',
+    'main.btn.load': 'Загрузить папку игры или мода',
+    'main.btn.export': 'Экспорт соседства',
+    'main.btn.save_map': 'Сохранить карту (PNG)',
+    'main.btn.save_view': 'Сохранить вид (PNG)',
+    'main.btn.reset_view': 'Сбросить вид',
+    'main.mode.province': 'Провинции', 'main.mode.area': 'Область', 'main.mode.region': 'Регион',
+    'main.mode.superregion': 'Суперрегион', 'main.mode.forts': 'Форты', 'main.mode.optimization': 'Оптимизация',
+    'empty.lead': 'Выберите папку Europa Universalis IV или мода (ту, где лежат map/ и history/). Можно выбрать и только map/, но тогда соль неизвестна. Папку можно также перетащить на это окно.',
+    'empty.files': 'Выбрать отдельные файлы',
+    'empty.needs': 'Обязательны: map/provinces.bmp и map/definition.csv. Используются при наличии: остальные файлы map/ (area, region, superregion, default.map, climate, adjacencies, terrain, forts.txt), history/provinces для соли и common/tradegoods.',
+    'empty.privacy': 'Файлы игры читаются внутри браузера и никуда не отправляются. Если браузер спрашивает, «загрузить» ли папку, — это лишь разрешение на чтение для этой страницы.',
+    'load.reading': 'Чтение {0}…', 'load.pixels': 'Сопоставление {0} × {1} пикселей с провинциями…',
+    'load.adjacency': 'Вычисление соседства…', 'load.render': 'Отрисовка карты…',
+    'main.load.missing_files': 'В выбранной папке не найдены definition.csv или provinces.bmp.',
+    'main.load.summary': 'Загружено {5}: провинций {0}, областей {1}, регионов {2}, суперрегионов {3}, фортов {4}.',
+    'load.failed': 'Не удалось загрузить карту: {0}',
+    'tab.info': 'Провинция', 'tab.opt': 'Оптимизация', 'tab.tree': 'Дерево',
+    'info.hint': 'Нажмите на провинцию на карте, чтобы увидеть сведения о ней.',
+    'info.header': 'Провинция',
+    'info.field.id': 'ID провинции', 'info.field.area': 'Область', 'info.field.region': 'Регион', 'info.field.superregion': 'Суперрегион',
+    'info.fort_label': 'Есть крепость (forts.txt)',
+    'info.neighbors': 'Соседи', 'info.no_neighbors': 'Нет сухопутных соседей.',
+    'info.status.water': 'Вода', 'info.status.wasteland': 'Пустошь', 'info.status.fort': 'Крепость',
+    'info.unknown': '(неизвестно)', 'info.unnamed': '(без имени)',
+    'info.btn.add_coverage': 'Добавить в покрытие', 'info.btn.add_required': 'Добавить в обязательные',
+    'forts.download': 'Скачать forts.txt', 'forts.count': 'фортов: {0}',
+    'forts.note': 'Изменения фортов хранятся в этом браузере. Скачайте файл и положите его в папку map/, чтобы использовать в другом месте.',
+    'opt.title': 'Оптимизация покрытия крепостями',
+    'opt.field.coverage': 'Покрываемые провинции',
+    'opt.field.coverage.hint': 'province, Name_или_ID / area, Area_Name / region, Region_Name / superregion, Superregion_Name (один объект на строку)',
+    'opt.field.required': 'Обязательные крепости', 'opt.field.preferred': 'Желательные крепости',
+    'opt.field.excluded': 'Исключительные (Homebrew)', 'opt.field.groups': 'Группы', 'opt.field.mode': 'Режим соседства',
+    'opt.field.time': 'Лимит времени (секунды)',
+    'opt.hint.ids': 'ID через запятую, пробел или перенос строки. Строки с # — комментарии.',
+    'opt.hint.preferred': 'Используются только при выборе между одинаково малыми решениями.',
+    'opt.hint.excluded': 'В режиме Homebrew этим провинциям разрешена крепость рядом с другой крепостью.',
+    'opt.hint.groups': 'Group_Name : p1, p2, ... : MinForts (одна группа на строку, имена не должны повторяться)',
+    'opt.mode.no_adjacent': 'Запретить крепости в соседних провинциях',
+    'opt.mode.homebrew': 'Homebrew (разрешить только для исключительных)',
+    'opt.mode.any': 'Разрешить любые соседние крепости',
+    'opt.btn.show_on_map': 'Показать на карте', 'opt.btn.run': 'Запустить оптимизацию', 'opt.btn.stop': 'Остановить',
+    'opt.btn.reset': 'Сбросить раскраску', 'opt.btn.save_config': 'Сохранить конфиг', 'opt.btn.load_config': 'Загрузить конфиг',
+    'opt.btn.example': 'Пример Anbennar', 'opt.btn.whole_map': 'Оптимизировать всю карту', 'opt.btn.copy': 'Копировать ID',
+    'opt.btn.to_required': 'Сделать обязательными',
+    'opt.output.count': 'Крепостей в решении: {0}', 'opt.output.id': 'ID', 'opt.output.name': 'Имя', 'opt.output.role': 'Роль',
+    'opt.role.required': 'обязательная', 'opt.role.preferred': 'желательная', 'opt.role.exceptional': 'исключительная', 'opt.role.group': 'группа', 'opt.role.default': '—',
+    'opt.msg.parse_errors': 'Сначала исправьте эти строки:',
+    'opt.msg.empty_coverage_warning': 'Список покрываемых провинций пуст. Оптимизация ВСЕЙ карты может занять много времени и упереться в лимит.',
+    'opt.msg.complete': 'Найдено оптимальное расположение: крепостей {0} ({1} с).',
+    'opt.msg.running': 'Решение для {0} провинций-кандидатов…',
+    'opt.msg.stopped': 'Остановлено.',
+    'opt.msg.no_valid_coverage': 'Введённые данные не содержат сухопутных провинций (возможно, выбраны только вода или пустоши).',
+    'opt.msg.copied': 'Скопировано ID: {0}.',
+    'opt.msg.worker_failed': 'Не удалось запустить оптимизатор: {0}. Если index.html открыт прямо с диска, запустите папку через http-сервер (см. README).',
+    'solver.warn.uncovered': 'Эти провинции нельзя покрыть ни одной крепостью-кандидатом: {0}.',
+    'solver.warn.group_min': "В группе '{0}' меньше подходящих провинций, чем минимум {1}.",
+    'solver.warn.group_outside': "Группа '{0}': провинции {1} вне покрытия и не учитываются.",
+    'solver.warn.required_not_in_candidates': 'Обязательная крепость {0} — вода или пустошь.',
+    'solver.warn.time_limit': 'Достигнут лимит времени ({1} с): найдено решение из {0} крепостей, но оно может быть не минимальным. Увеличьте лимит или сузьте покрытие.',
+    'solver.warn.no_solution_time': 'Лимит времени истёк до нахождения допустимого решения. Увеличьте лимит или сузьте покрытие.',
+    'solver.warn.failed': 'Допустимого решения нет ({0}). Ограничения невозможно выполнить одновременно.',
+    'solver.warn.exception': 'Ошибка оптимизатора: {0}',
+    'parser.bad_line': 'Плохая строка: {0}', 'parser.unknown_province': 'Неизвестная провинция: {0}',
+    'parser.unknown_area': 'Неизвестная область: {0}', 'parser.unknown_region': 'Неизвестный регион: {0}',
+    'parser.unknown_superregion': 'Неизвестный суперрегион: {0}', 'parser.unknown_selector': 'Неизвестный селектор: {0}',
+    'parser.bad_group': 'Плохая группа: {0}', 'parser.bad_group_min': 'Плохой минимум в группе: {0}',
+    'msg.load_first': 'Сначала загрузите карту.',
+    'map.warn_duplicate_colors': 'Несколько провинций в definition.csv имеют одинаковый цвет; используется первая: {0}',
+    'tree.title': 'Дерево провинций', 'tree.search': 'Поиск по имени или ID…',
+    'tree.orphan.regions': '(регионы без суперрегиона)', 'tree.orphan.areas': '(области без региона)',
+    'tree.orphan.provinces': '(провинции без области)', 'tree.tag.water': '[вода]', 'tree.tag.wasteland': '[пустошь]',
+    'tree.more': '…и ещё {0}',
+    'legend.fort': 'Крепость', 'legend.covered': 'Покрыто соседней крепостью', 'legend.water': 'Вода', 'legend.waste': 'Пустошь',
+    'legend.required': 'Обязательная', 'legend.preferred': 'Желательная', 'legend.exceptional': 'Исключительная', 'legend.group': 'В группе', 'legend.default': 'Прочая крепость',
+  },
+};
+let LANG = 'en';
+function t(key, ...args) {
+  let s = (I18N[LANG] && I18N[LANG][key]) ?? I18N.en[key] ?? key;
+  return s.replace(/\{(\d+)\}/g, (_, i) => args[+i] ?? '');
+}
+function applyI18n() {
+  document.documentElement.lang = LANG;
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
+  document.title = t('app.title');
+  if (M) { renderLegend(); if (selected != null) showInfo(selected); updateFortCount(); updateDefenseStatus(); }
+}
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+/* =====================================================================
+   Helpers
+   ===================================================================== */
+const $ = (id) => document.getElementById(id);
+const tick = () => new Promise(r => setTimeout(r, 0));
+const abgr = (r, g, b) => ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0;
+const COL = {
+  black: abgr(0, 0, 0), white: abgr(255, 255, 255), water: abgr(50, 100, 200), fort: abgr(60, 200, 60),
+  required: [220, 60, 60], preferred: [240, 150, 50], exceptional: [150, 60, 200], group: [240, 130, 200],
+  def: [240, 220, 60], covPreview: [80, 220, 80],
+};
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function seededRGB(seed) { const r = mulberry32(seed); return [60 + Math.floor(r() * 160), 60 + Math.floor(r() * 160), 60 + Math.floor(r() * 160)]; }
+function download(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+async function readText(file) {
+  const buf = await file.arrayBuffer();
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+  catch { return new TextDecoder('windows-1252').decode(buf); }   // Paradox files are often Latin-1
+}
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* =====================================================================
+   Parsers (ported from EU4FLO/Parsers)
+   ===================================================================== */
+function parseDefinition(text) {
+  const out = [];
+  for (const line of text.split(/\r?\n/)) {
+    const p = line.split(';');
+    if (p.length < 4) continue;
+    const id = parseInt(p[0], 10), r = +p[1], g = +p[2], b = +p[3];
+    if (!/^\s*\d+\s*$/.test(p[0]) || [r, g, b].some(v => !Number.isInteger(v) || v < 0 || v > 255)) continue;
+    let name = p.length > 4 ? p[4] : '';
+    const h = name.indexOf('#'); if (h >= 0) name = name.slice(0, h);
+    name = name.replace(/_+$/, '').trim();
+    out.push({ id, r, g, b, name });
+  }
+  return out;
+}
+function stripComments(text) { return text.replace(/#[^\r\n]*/g, ''); }
+function numbersInBlock(text, key) {
+  const out = [];
+  const idx = text.indexOf(key); if (idx < 0) return out;
+  const open = text.indexOf('{', idx); if (open < 0) return out;
+  const close = text.indexOf('}', open); if (close < 0) return out;
+  for (const m of text.slice(open + 1, close).matchAll(/\d+/g)) out.push(+m[0]);
+  return out;
+}
+function parseIdFile(text) {   // forts.txt
+  const s = new Set();
+  for (let line of text.split(/\r?\n/)) {
+    const h = line.indexOf('#'); if (h >= 0) line = line.slice(0, h);
+    line = line.trim(); if (/^\d+$/.test(line)) s.add(+line);
+  }
+  return s;
+}
+function parseAdjCsv(text) {
+  const out = [];
+  for (let raw of text.split(/\r?\n/)) {
+    const line = raw.trim().replace(/^﻿/, '');
+    if (!line || line.startsWith('#') || /^from/i.test(line)) continue;
+    const p = line.split(/[;,]/); if (p.length < 2) continue;
+    const a = p[0].trim(), b = p[1].trim();
+    if (!/^\d+$/.test(a) || !/^\d+$/.test(b) || a === b) continue;
+    out.push([+a, +b]);
+  }
+  return out;
+}
+// Clausewitz tokenizer + block parser (HierarchyParser.cs)
+function cwParse(text) {
+  const tokens = []; let cur = '', inQ = false, inC = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inC) { if (c === '\n' || c === '\r') inC = false; continue; }
+    if (inQ) { if (c === '"') { inQ = false; continue; } cur += c; continue; }
+    if (c === '#') { inC = true; continue; }
+    if (c === '"') { inQ = true; continue; }
+    if (c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '﻿') { if (cur) { tokens.push(cur); cur = ''; } }
+    else if (c === '{' || c === '}' || c === '=') { if (cur) { tokens.push(cur); cur = ''; } tokens.push(c); }
+    else cur += c;
+  }
+  if (cur) tokens.push(cur);
+  let pos = 0;
+  function block() {
+    const nodes = [];
+    while (pos < tokens.length) {
+      const tok = tokens[pos];
+      if (tok === '}') { pos++; return nodes; }
+      if (tokens[pos + 1] === '=') {
+        pos += 2;
+        if (tokens[pos] === '{') { pos++; nodes.push({ key: tok, children: block() }); }
+        else { nodes.push({ key: tok, value: tokens[pos] ?? '' }); pos++; }
+      } else if (tok === '{') { pos++; nodes.push({ children: block() }); }
+      else { nodes.push({ value: tok }); pos++; }
+    }
+    return nodes;
+  }
+  return block();
+}
+const bare = (node) => (node.children || []).filter(c => c.key == null && c.value != null).map(c => c.value);
+const child = (node, key) => (node.children || []).find(c => c.key === key);
+function parseAreas(text) {
+  const res = [];
+  for (const n of cwParse(text)) {
+    if (n.key == null || !n.children) continue;
+    const src = child(n, 'province_ids') || n;
+    const ids = bare(src).filter(v => /^\d+$/.test(v)).map(Number);
+    if (ids.length) res.push({ name: n.key, ids });
+  }
+  return res;
+}
+function parseRegions(text) {
+  const res = [];
+  for (const n of cwParse(text)) {
+    if (n.key == null || !n.children) continue;
+    const a = child(n, 'areas'); if (!a) continue;
+    const areas = bare(a); if (areas.length) res.push({ name: n.key, areas });
+  }
+  return res;
+}
+function parseSuperregions(text) {
+  const res = [];
+  for (const n of cwParse(text)) {
+    if (n.key == null || !n.children) continue;
+    const regions = bare(n).filter(v => v.endsWith('_region'));
+    if (regions.length) res.push({ name: n.key, regions });
+  }
+  return res;
+}
+
+/* BMP → province id per pixel. Handles 24/32-bit and 8-bit indexed BMPs; falls back to the browser decoder. */
+async function decodeProvinces(file, colorToId) {
+  const buf = await file.arrayBuffer();
+  const dv = new DataView(buf);
+  let w, h, ids;
+  const lookup = (() => {
+    let lastPacked = -1, lastId = -1;
+    return (packed) => {
+      if (packed !== lastPacked) { lastPacked = packed; const v = colorToId.get(packed); lastId = v === undefined ? -1 : v; }
+      return lastId;
+    };
+  })();
+  try {
+    if (dv.getUint16(0, true) !== 0x4D42) throw new Error('not a BMP');
+    const off = dv.getUint32(10, true), hdr = dv.getUint32(14, true);
+    w = dv.getInt32(18, true); let hh = dv.getInt32(22, true);
+    const bpp = dv.getUint16(28, true), comp = dv.getUint32(30, true);
+    const topDown = hh < 0; h = Math.abs(hh);
+    if (!(comp === 0 || (comp === 3 && bpp === 32)) || ![8, 24, 32].includes(bpp)) throw new Error('unsupported BMP');
+    const stride = Math.floor((bpp * w + 31) / 32) * 4;
+    const bytes = new Uint8Array(buf);
+    let pal = null;
+    if (bpp === 8) {
+      const n = dv.getUint32(46, true) || 256; pal = new Int32Array(256).fill(-1);
+      for (let i = 0; i < n; i++) { const o = 14 + hdr + i * 4; pal[i] = (bytes[o + 2] << 16) | (bytes[o + 1] << 8) | bytes[o]; }
+    }
+    ids = new Int32Array(w * h);
+    const step = bpp >> 3;
+    for (let y = 0; y < h; y++) {
+      const row = off + (topDown ? y : h - 1 - y) * stride, base = y * w;
+      for (let x = 0; x < w; x++) {
+        let packed;
+        if (pal) packed = pal[bytes[row + x]];
+        else { const o = row + x * step; packed = (bytes[o + 2] << 16) | (bytes[o + 1] << 8) | bytes[o]; }
+        ids[base + x] = lookup(packed);
+      }
+    }
+  } catch (e) {
+    // Fallback: let the browser decode the image (no colour management so colours stay exact).
+    const bmp = await createImageBitmap(file, { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
+    w = bmp.width; h = bmp.height;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const cx = c.getContext('2d', { willReadFrequently: true }); cx.drawImage(bmp, 0, 0);
+    const d = cx.getImageData(0, 0, w, h).data;
+    ids = new Int32Array(w * h);
+    for (let i = 0, j = 0; i < ids.length; i++, j += 4) ids[i] = lookup((d[j] << 16) | (d[j + 1] << 8) | d[j + 2]);
+  }
+  return { w, h, ids };
+}
+
+/* =====================================================================
+   Map model
+   ===================================================================== */
+let M = null;            // loaded map
+let mode = 'province';
+let selected = null;
+let fortsKey = null;
+let optSolution = new Set();
+let optPalette = new Map();     // id -> [r,g,b]
+let previewPalette = new Map(); // id -> [r,g,b]
+
+function pickFiles(fileList) {
+  const wanted = ['provinces.bmp', 'definition.csv', 'area.txt', 'region.txt', 'superregion.txt', 'default.map', 'climate.txt', 'adjacencies.csv', 'forts.txt', 'terrain.txt', 'terrain.bmp'];
+  const found = new Map();
+  const history = new Map(), tradegoods = [];
+  for (const f of fileList) {
+    const name = f.name.toLowerCase();
+    const path = (f._path || f.webkitRelativePath || f.name);
+    const lp = path.toLowerCase();
+    if (/(^|\/)history\/provinces\/[^/]+\.txt$/.test(lp)) {
+      const m = /^\s*(\d+)/.exec(f.name);
+      if (m && !history.has(+m[1])) history.set(+m[1], f);
+      continue;
+    }
+    if (/(^|\/)common\/tradegoods\/[^/]+\.txt$/.test(lp)) { tradegoods.push(f); continue; }
+    if (!wanted.includes(name)) continue;
+    const depth = path.split('/').length;
+    const inMap = /(^|\/)map\//i.test(path) ? 0 : 1;   // prefer files inside a folder called map/
+    const score = inMap * 100 + depth;
+    if (!found.has(name) || found.get(name).score > score) found.set(name, { file: f, score, path });
+  }
+  const out = {}; for (const [k, v] of found) out[k] = v.file;
+  const defPath = found.get('definition.csv')?.path.split('/') || [];
+  // name the map after the mod/game folder that contains map/
+  out._root = (defPath.length >= 3 ? defPath[defPath.length - 3] : defPath[defPath.length - 2]) || 'map';
+  out._history = history; out._tradegoods = tradegoods;
+  return out;
+}
+
+/* ---------- terrain & trade goods (defense data) ---------- */
+// Fallback used only when no common/tradegoods files were loaded.
+const DEFAULT_GOOD_DEFENSIVENESS = { salt: 0.10 };
+function parseTerrain(text) {
+  // "terrain {" and "tree {" have no "=" in the game files
+  const fixed = text.replace(/^(\s*)(terrain|tree)\s*\{/gm, '$1$2 = {');
+  const top = cwParse(fixed);
+  const cats = new Map();      // name -> { pen, loc, water, overrides[] }
+  const catNode = top.find(n => n.key === 'categories');
+  for (const c of catNode?.children || []) {
+    if (!c.key || !c.children) continue;
+    const num = (k) => { const n = child(c, k); return n && n.value != null && !isNaN(+n.value) ? +n.value : 0; };
+    const ov = child(c, 'terrain_override');
+    cats.set(c.key, {
+      pen: num('defence'), loc: num('local_defensiveness'),
+      water: child(c, 'is_water')?.value === 'yes',
+      overrides: ov ? bare(ov).filter(v => /^\d+$/.test(v)).map(Number) : [],
+    });
+  }
+  const indexToCat = new Map();  // terrain.bmp palette index -> category
+  const tNode = top.find(n => n.key === 'terrain');
+  for (const g of tNode?.children || []) {
+    if (!g.children) continue;
+    const type = child(g, 'type')?.value, col = child(g, 'color');
+    if (!type || !col) continue;
+    for (const v of bare(col)) if (/^\d+$/.test(v)) indexToCat.set(+v, type);
+  }
+  return { cats, indexToCat };
+}
+function parseTradeGoods(texts) {
+  const res = new Map();
+  for (const text of texts) for (const g of cwParse(text)) {
+    if (!g.key || !g.children) continue;
+    const prov = child(g, 'province');
+    const ld = prov && child(prov, 'local_defensiveness');
+    res.set(g.key, ld && !isNaN(+ld.value) ? +ld.value : 0);
+  }
+  return res;
+}
+function historyTradeGood(text) {
+  // only the top-level (start date) value; dated blocks are ignored
+  const n = cwParse(text).find(x => x.key === 'trade_goods');
+  return n?.value || null;
+}
+// terrain.bmp is an 8-bit indexed bitmap; we need raw palette indices, not colours.
+async function decodeIndexedBmp(file) {
+  const buf = await file.arrayBuffer(), dv = new DataView(buf), bytes = new Uint8Array(buf);
+  if (dv.getUint16(0, true) !== 0x4D42) throw new Error('terrain.bmp is not a BMP');
+  const off = dv.getUint32(10, true), w = dv.getInt32(18, true), hh = dv.getInt32(22, true), bpp = dv.getUint16(28, true);
+  if (bpp !== 8) throw new Error('terrain.bmp is not 8-bit indexed');
+  const h = Math.abs(hh), topDown = hh < 0, stride = Math.floor((8 * w + 31) / 32) * 4;
+  const idx = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const row = off + (topDown ? y : h - 1 - y) * stride;
+    idx.set(bytes.subarray(row, row + w), y * w);
+  }
+  return { w, h, idx };
+}
+
+let lastFiles = [];
+async function loadMap(fileList, append = false) {
+  if (append) fileList = lastFiles.concat(fileList);
+  lastFiles = fileList;
+  const F = pickFiles(fileList);
+  const status = $('load-status');
+  $('empty').hidden = false; status.hidden = false;
+  const say = async (s) => { status.textContent = s; await tick(); };
+  try {
+    if (!F['definition.csv'] || !F['provinces.bmp']) throw new Error(t('main.load.missing_files'));
+    await say(t('load.reading', 'definition.csv'));
+    const provinces = parseDefinition(await readText(F['definition.csv']));
+    const byId = new Map(), colorToId = new Map(), dup = new Map();
+    let maxId = 0;
+    for (const p of provinces) {
+      byId.set(p.id, p); maxId = Math.max(maxId, p.id);
+      const packed = (p.r << 16) | (p.g << 8) | p.b;
+      if (!colorToId.has(packed)) colorToId.set(packed, p.id);
+      else { if (!dup.has(packed)) dup.set(packed, [colorToId.get(packed)]); dup.get(packed).push(p.id); }
+    }
+    const txt = async (n) => F[n] ? (await say(t('load.reading', n)), await readText(F[n])) : '';
+    const areas = parseAreas(await txt('area.txt'));
+    const regions = parseRegions(await txt('region.txt'));
+    const superregions = parseSuperregions(await txt('superregion.txt'));
+    const defMap = stripComments(await txt('default.map'));
+    const sea = new Set([...numbersInBlock(defMap, 'sea_starts'), ...numbersInBlock(defMap, 'lakes')]);
+    const waste = new Set(numbersInBlock(stripComments(await txt('climate.txt')), 'impassable'));
+    const extraPairs = parseAdjCsv(await txt('adjacencies.csv'));
+    const fileForts = F['forts.txt'] ? parseIdFile(await readText(F['forts.txt'])) : new Set();
+
+    await say(t('load.reading', 'provinces.bmp'));
+    const bmpMeta = await F['provinces.bmp'].slice(0, 30).arrayBuffer();
+    const bdv = new DataView(bmpMeta);
+    await say(t('load.pixels', bdv.getInt32(18, true), Math.abs(bdv.getInt32(22, true))));
+    const { w, h, ids } = await decodeProvinces(F['provinces.bmp'], colorToId);
+
+    await say(t('load.adjacency'));
+    const N = maxId + 1;
+    const excluded = new Uint8Array(N);
+    for (const s of sea) if (s < N) excluded[s] = 1;
+    for (const s of waste) if (s < N) excluded[s] = 1;
+    const adj = new Map();
+    const ensure = (p) => { let s = adj.get(p); if (!s) { s = new Set(); adj.set(p, s); } return s; };
+    const link = (a, b) => { ensure(a).add(b); ensure(b).add(a); };
+    const border = new Uint8Array(w * h);
+    const bx0 = new Int32Array(N).fill(1e9), by0 = new Int32Array(N).fill(1e9), bx1 = new Int32Array(N).fill(-1), by1 = new Int32Array(N).fill(-1);
+    const seen = new Uint8Array(N);
+    for (let y = 0; y < h; y++) {
+      const base = y * w;
+      for (let x = 0; x < w; x++) {
+        const i = base + x, a = ids[i];
+        if (a < 0) continue;
+        if (x < bx0[a]) bx0[a] = x; if (x > bx1[a]) bx1[a] = x;
+        if (y < by0[a]) by0[a] = y; if (y > by1[a]) by1[a] = y;
+        if (!seen[a]) { seen[a] = 1; if (!excluded[a]) ensure(a); }
+        if (x + 1 < w) { const b = ids[i + 1]; if (b >= 0 && b !== a) { border[i] = 1; if (!excluded[a] && !excluded[b]) link(a, b); } }
+        if (y + 1 < h) { const b = ids[i + w]; if (b >= 0 && b !== a) { border[i] = 1; if (!excluded[a] && !excluded[b]) link(a, b); } }
+      }
+    }
+    for (const [a, b] of extraPairs) {
+      if (a === b || (a < N && excluded[a]) || (b < N && excluded[b]) || sea.has(a) || sea.has(b) || waste.has(a) || waste.has(b)) continue;
+      link(a, b);
+    }
+
+    // hierarchy lookups
+    const provArea = new Map(), areaRegion = new Map(), regionSuper = new Map();
+    areas.forEach(a => a.ids.forEach(p => provArea.set(p, a.name)));
+    regions.forEach(r => r.areas.forEach(a => areaRegion.set(a, r.name)));
+    superregions.forEach(s => s.regions.forEach(r => regionSuper.set(r, s.name)));
+    const nameToId = new Map();
+    for (const p of provinces) if (p.name && !nameToId.has(p.name.toLowerCase())) nameToId.set(p.name.toLowerCase(), p.id);
+
+    // ---- defense data: terrain (attacker penalty, local defensiveness) + trade good bonus ----
+    await say(t('load.terrain'));
+    const def = { has: false, terrainFile: !!F['terrain.txt'], historyCount: F._history.size, goodsFromFiles: F._tradegoods.length > 0,
+      cat: new Array(N).fill(null), src: new Uint8Array(N), pen: new Float32Array(N), loc: new Float32Array(N),
+      good: new Array(N).fill(null), goodLoc: new Float32Array(N) };
+    let cats = new Map();
+    if (F['terrain.txt']) {
+      const parsed = parseTerrain(await readText(F['terrain.txt']));
+      cats = parsed.cats;
+      for (const [name, c] of cats) for (const p of c.overrides) if (p < N) { def.cat[p] = name; def.src[p] = 1; }
+      if (F['terrain.bmp']) {
+        try {
+          const tb = await decodeIndexedBmp(F['terrain.bmp']);
+          if (tb.w === w && tb.h === h) {
+            const catNames = [...cats.keys()], catIdx = new Map(catNames.map((n, i) => [n, i]));
+            const idxToC = new Int16Array(256).fill(-1);
+            for (const [i, n] of parsed.indexToCat) if (catIdx.has(n) && !cats.get(n).water) idxToC[i] = catIdx.get(n);
+            const K = catNames.length, counts = new Uint32Array(N * K);
+            for (let i = 0; i < ids.length; i++) {
+              const p = ids[i]; if (p < 0 || def.src[p]) continue;
+              const c = idxToC[tb.idx[i]]; if (c >= 0) counts[p * K + c]++;
+            }
+            for (let p = 0; p < N; p++) {
+              if (def.src[p]) continue;
+              let best = -1, bc = 0;
+              for (let c = 0; c < K; c++) if (counts[p * K + c] > bc) { bc = counts[p * K + c]; best = c; }
+              if (best >= 0) { def.cat[p] = catNames[best]; def.src[p] = 2; }
+            }
+          }
+        } catch (err) { console.warn(err); }
+      }
+      for (let p = 0; p < N; p++) if (def.cat[p]) { const c = cats.get(def.cat[p]); def.pen[p] = c.pen; def.loc[p] = c.loc; }
+    }
+    let goodDef = new Map(Object.entries(DEFAULT_GOOD_DEFENSIVENESS));
+    if (F._tradegoods.length) {
+      await say(t('load.reading', 'common/tradegoods'));
+      goodDef = parseTradeGoods(await Promise.all(F._tradegoods.map(readText)));
+    }
+    if (F._history.size) {
+      await say(t('load.history', F._history.size));
+      const entries = [...F._history];
+      for (let i = 0; i < entries.length; i += 400) {
+        await Promise.all(entries.slice(i, i + 400).map(async ([p, f]) => {
+          if (p >= N) return;
+          const g = historyTradeGood(await readText(f));
+          if (g) { def.good[p] = g; def.goodLoc[p] = goodDef.get(g) || 0; }
+        }));
+        await say(t('load.history', `${Math.min(i + 400, entries.length)}/${entries.length}`));
+      }
+    }
+    def.has = def.terrainFile || def.historyCount > 0;
+
+    M = { w, h, ids, provinces, byId, maxId, sea, waste, areas, regions, superregions, adj, border,
+      bbox: { bx0, by0, bx1, by1 }, provArea, areaRegion, regionSuper, nameToId, root: F._root, def, cats };
+
+    // forts: browser copy wins over the file so edits survive reloads
+    fortsKey = `eu4flo.forts.${F._root}.${provinces.length}.${w}x${h}`;
+    const saved = store.get(fortsKey);
+    M.forts = saved != null ? new Set(JSON.parse(saved)) : fileForts;
+
+    optSolution = new Set(); optPalette = new Map(); previewPalette = new Map(); selected = null;
+    await say(t('load.render'));
+    mapCanvas.width = w; mapCanvas.height = h;
+    imgData = new ImageData(w, h);
+    renderMap(); fitView();
+    $('empty').hidden = true; status.hidden = true;
+    ['sel-mode', 'btn-reset-view', 'btn-export', 'btn-save-map', 'btn-save-view'].forEach(id => $(id).disabled = false);
+    $('hud').hidden = false;
+    $('hud').textContent = t('main.load.summary', provinces.length, areas.length, regions.length, superregions.length, M.forts.size, F._root);
+    $('info-empty').textContent = t('info.hint');
+    buildTree(); updateFortCount(); updateDefenseStatus();
+    if (dup.size) {
+      const list = [...dup.values()].slice(0, 12).map(v => v.join('/')).join(', ') + (dup.size > 12 ? ' …' : '');
+      showMsgs([{ kind: 'warn', text: t('map.warn_duplicate_colors', list) }]);
+    }
+  } catch (e) {
+    console.error(e);
+    await say(t('load.failed', e.message || e));
+  }
+}
+
+/* ---------- defense score ---------- */
+function defWeights() {
+  return { pen: Math.max(0, +$('f-w-pen').value || 0), loc: Math.max(0, +$('f-w-loc').value || 0) };
+}
+function defScore(p, W = defWeights()) {
+  const D = M.def; if (p > M.maxId) return 0;
+  return W.pen * D.pen[p] + W.loc * Math.round((D.loc[p] + D.goodLoc[p]) * 1000) / 10;
+}
+const fmtScore = (s) => (Math.round(s * 10) / 10).toString();
+function updateDefenseStatus() {
+  const box = $('def-status'); if (!M) { box.textContent = ''; return; }
+  const D = M.def; const parts = [];
+  if (!D.terrainFile) parts.push(t('def.no_terrain'));
+  else {
+    let ov = 0, est = 0, none = 0;
+    for (const p of M.provinces) if (isLand(p.id)) { if (D.src[p.id] === 1) ov++; else if (D.src[p.id] === 2) est++; else none++; }
+    parts.push(t('def.terrain_status', ov, est) + (none ? ' ' + t('def.terrain_missing', none) : ''));
+  }
+  if (!D.historyCount) {
+    box.innerHTML = esc(parts.join(' ')) + ` ${esc(t('def.no_history'))} <button class="btn small" id="btn-add-history">${esc(t('def.add_history'))}</button>`;
+    $('btn-add-history').onclick = () => $('in-extra').click();
+    return;
+  }
+  const goods = new Map();
+  for (const p of M.provinces) if (M.def.goodLoc[p.id] > 0) goods.set(M.def.good[p.id], (goods.get(M.def.good[p.id]) || 0) + 1);
+  parts.push(t('def.history_status', D.historyCount) + ' ' + ([...goods].map(([g, n]) => t('def.good_count', n, g)).join(', ') || t('def.no_bonus_goods')));
+  if (!D.goodsFromFiles) parts.push(t('def.goods_default'));
+  box.textContent = parts.join(' ');
+}
+['f-w-pen', 'f-w-loc'].forEach(id => $(id).addEventListener('input', () => {
+  if (!M) return;
+  if (mode === 'defense') renderMap();
+  if (selected != null) showInfo(selected);
+}));
+
+/* =====================================================================
+   Rendering
+   ===================================================================== */
+const mapCanvas = document.createElement('canvas');
+const view = $('view');
+const vctx = view.getContext('2d');
+let imgData = null;
+const V = { s: 1, x: 0, y: 0 };   // screen = map * s + (x, y)
+let selCanvas = null, selBox = null;
+
+function provinceColors() {
+  const N = M.maxId + 1;
+  const col = new Uint32Array(N).fill(COL.black);
+  const hatch = new Uint8Array(N);
+  const fromRGB = ([r, g, b]) => abgr(r, g, b);
+  let borders = false;
+  if (mode === 'province') {
+    for (const p of M.provinces) col[p.id] = abgr(p.r, p.g, p.b);
+  } else if (mode === 'area') {
+    M.areas.forEach((a, i) => { const c = fromRGB(seededRGB(i * 7919 + 1)); a.ids.forEach(p => { if (p < N) col[p] = c; }); });
+  } else if (mode === 'region') {
+    const rc = new Map(M.regions.map((r, i) => [r.name, fromRGB(seededRGB(i * 104729 + 3))]));
+    for (const [p, an] of M.provArea) { const rn = M.areaRegion.get(an); if (rn && rc.has(rn) && p < N) col[p] = rc.get(rn); }
+  } else if (mode === 'superregion') {
+    const sc = new Map(M.superregions.map((s, i) => [s.name, fromRGB(seededRGB(i * 15485863 + 7))]));
+    for (const [p, an] of M.provArea) { const sn = M.regionSuper.get(M.areaRegion.get(an)); if (sn && sc.has(sn) && p < N) col[p] = sc.get(sn); }
+  } else if (mode === 'defense') {
+    borders = true;
+    const W = defWeights(); let max = 0;
+    const sc = new Float32Array(N);
+    for (const p of M.provinces) if (isLand(p.id)) { sc[p.id] = defScore(p.id, W); if (sc[p.id] > max) max = sc[p.id]; }
+    M.defMax = max;
+    const stops = [[244, 240, 226], [214, 170, 96], [150, 74, 32], [70, 30, 20]];
+    const ramp = (f) => { const x = Math.min(1, Math.max(0, f)) * 3, i = Math.min(2, Math.floor(x)), u = x - i, a = stops[i], b = stops[i + 1];
+      return abgr(a[0] + (b[0] - a[0]) * u | 0, a[1] + (b[1] - a[1]) * u | 0, a[2] + (b[2] - a[2]) * u | 0); };
+    for (const p of M.provinces) {
+      const id = p.id;
+      col[id] = M.waste.has(id) ? COL.black : M.sea.has(id) ? COL.water : ramp(max ? sc[id] / max : 0);
+    }
+  } else {
+    borders = true;
+    const forts = mode === 'forts' ? M.forts : optSolution;
+    const palette = mode === 'forts' ? null : new Map([...optPalette, ...previewPalette]);
+    for (const p of M.provinces) {
+      const id = p.id;
+      if (M.waste.has(id)) col[id] = COL.black;
+      else if (M.sea.has(id)) col[id] = COL.water;
+      else if (palette ? palette.has(id) : forts.has(id)) col[id] = palette ? fromRGB(palette.get(id)) : COL.fort;
+      else {
+        col[id] = COL.white;
+        const nb = M.adj.get(id);
+        if (nb) for (const n of nb) if (forts.has(n)) { hatch[id] = 1; break; }
+      }
+    }
+  }
+  return { col, hatch, borders };
+}
+
+function renderMap() {
+  const { col, hatch, borders } = provinceColors();
+  const { w, h, ids, border } = M;
+  const out = new Uint32Array(imgData.data.buffer);
+  for (let y = 0; y < h; y++) {
+    const base = y * w;
+    for (let x = 0; x < w; x++) {
+      const i = base + x, id = ids[i];
+      let c;
+      if (id < 0) c = COL.black;
+      else if (borders && border[i]) c = COL.black;
+      else if (hatch[id] && ((x + y) & 7) < 4) c = COL.fort;
+      else c = col[id];
+      out[i] = c;
+    }
+  }
+  mapCanvas.getContext('2d').putImageData(imgData, 0, 0);
+  renderLegend();
+  draw();
+}
+
+function renderLegend() {
+  const L = $('legend');
+  const sw = (rgb, label, cls = '') => `<span><i class="sw ${cls}" style="${rgb ? `background:rgb(${rgb})` : ''}"></i>${esc(label)}</span>`;
+  if (M && mode === 'defense') {
+    L.innerHTML = `<span><b>${esc(t('info.field.score'))}</b></span><span class="mono">0 <i class="ramp"></i> ${fmtScore(M.defMax || 0)}</span>`
+      + sw('50,100,200', t('legend.water')) + sw('0,0,0', t('legend.waste'));
+    L.hidden = false; return;
+  }
+  if (!M || (mode !== 'forts' && mode !== 'optimization')) { L.hidden = true; return; }
+  let html = '';
+  if (mode === 'forts') html += sw('60,200,60', t('legend.fort'));
+  else html += sw(COL.required, t('legend.required')) + sw(COL.preferred, t('legend.preferred')) + sw(COL.exceptional, t('legend.exceptional')) + sw(COL.group, t('legend.group')) + sw(COL.def, t('legend.default'));
+  html += sw('', t('legend.covered'), 'hatch') + sw('50,100,200', t('legend.water')) + sw('0,0,0', t('legend.waste'));
+  L.innerHTML = html; L.hidden = false;
+}
+
+function resizeView() {
+  const dpr = window.devicePixelRatio || 1, r = view.getBoundingClientRect();
+  view.width = Math.max(1, Math.round(r.width * dpr)); view.height = Math.max(1, Math.round(r.height * dpr));
+  draw();
+}
+function draw() {
+  const dpr = window.devicePixelRatio || 1;
+  vctx.setTransform(1, 0, 0, 1, 0, 0);
+  vctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--stage') || '#20262c';
+  vctx.fillRect(0, 0, view.width, view.height);
+  if (!M) return;
+  vctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  vctx.imageSmoothingEnabled = V.s < 1;
+  vctx.drawImage(mapCanvas, V.x, V.y, M.w * V.s, M.h * V.s);
+  if (selCanvas) {
+    vctx.imageSmoothingEnabled = false;
+    vctx.drawImage(selCanvas, V.x + selBox.x * V.s, V.y + selBox.y * V.s, selBox.w * V.s, selBox.h * V.s);
+  }
+}
+function fitView() {
+  const r = view.getBoundingClientRect();
+  V.s = Math.min(r.width / M.w, r.height / M.h);
+  V.x = (r.width - M.w * V.s) / 2; V.y = (r.height - M.h * V.s) / 2;
+  draw();
+}
+function centerOn(id) {
+  const { bx0, by0, bx1, by1 } = M.bbox;
+  if (id > M.maxId || bx1[id] < 0) return;
+  const r = view.getBoundingClientRect();
+  const span = Math.max(bx1[id] - bx0[id], by1[id] - by0[id], 20);
+  V.s = Math.max(V.s, Math.min(8, Math.min(r.width, r.height) / (span * 6)));
+  V.x = r.width / 2 - ((bx0[id] + bx1[id]) / 2) * V.s;
+  V.y = r.height / 2 - ((by0[id] + by1[id]) / 2) * V.s;
+  draw();
+}
+function buildSelectionOverlay(id) {
+  selCanvas = null; selBox = null;
+  if (id == null || id > M.maxId || M.bbox.bx1[id] < 0) return;
+  const { bx0, by0, bx1, by1 } = M.bbox;
+  const x0 = bx0[id], y0 = by0[id], w = bx1[id] - x0 + 1, h = by1[id] - y0 + 1;
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const cx = c.getContext('2d'); const d = cx.createImageData(w, h); const o = new Uint32Array(d.data.buffer);
+  const fill = abgr(255, 255, 255) & 0x66ffffff, edge = abgr(255, 210, 40);
+  const W = M.w, ids = M.ids;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const gx = x0 + x, gy = y0 + y, i = gy * W + gx;
+    if (ids[i] !== id) continue;
+    const isEdge = gx === 0 || gy === 0 || gx === W - 1 || gy === M.h - 1 || ids[i - 1] !== id || ids[i + 1] !== id || ids[i - W] !== id || ids[i + W] !== id;
+    o[y * w + x] = isEdge ? edge : (fill >>> 0);
+  }
+  cx.putImageData(d, 0, 0);
+  selCanvas = c; selBox = { x: x0, y: y0, w, h };
+}
+function provinceAt(clientX, clientY) {
+  if (!M) return -1;
+  const r = view.getBoundingClientRect();
+  const mx = Math.floor((clientX - r.left - V.x) / V.s), my = Math.floor((clientY - r.top - V.y) / V.s);
+  if (mx < 0 || my < 0 || mx >= M.w || my >= M.h) return -1;
+  return M.ids[my * M.w + mx];
+}
+
+/* pan / zoom / click */
+const pointers = new Map();
+let drag = null, pinch = null;
+view.addEventListener('pointerdown', (e) => {
+  if (!M) return;
+  view.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s: V.s, vx: V.x, vy: V.y, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+    drag = null;
+  } else drag = { x: e.clientX, y: e.clientY, vx: V.x, vy: V.y, moved: e.button !== 0 };
+});
+view.addEventListener('pointermove', (e) => {
+  if (!M) return;
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch && pointers.size === 2) {
+    const [a, b] = [...pointers.values()], r = view.getBoundingClientRect();
+    const k = Math.hypot(a.x - b.x, a.y - b.y) / pinch.d, ns = Math.min(40, Math.max(0.05, pinch.s * k));
+    const cx = pinch.cx - r.left, cy = pinch.cy - r.top;
+    V.x = cx - (cx - pinch.vx) * (ns / pinch.s); V.y = cy - (cy - pinch.vy) * (ns / pinch.s); V.s = ns;
+    draw(); return;
+  }
+  if (drag) {
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (Math.abs(dx) + Math.abs(dy) > 4) { drag.moved = true; view.classList.add('grabbing'); }
+    if (drag.moved) { V.x = drag.vx + dx; V.y = drag.vy + dy; draw(); }
+    return;
+  }
+  const id = provinceAt(e.clientX, e.clientY);
+  const p = M.byId.get(id);
+  $('hud').textContent = p ? `${p.id} · ${p.name || t('info.unnamed')}${M.provArea.has(id) ? ' · ' + M.provArea.get(id) : ''}` : '—';
+});
+const endPointer = (e) => {
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinch = null;
+  if (drag && !drag.moved && e.type === 'pointerup' && pointers.size === 0) {
+    const id = provinceAt(e.clientX, e.clientY);
+    if (id >= 0) select(id, false);
+  }
+  if (pointers.size === 0) { drag = null; view.classList.remove('grabbing'); }
+};
+view.addEventListener('pointerup', endPointer);
+view.addEventListener('pointercancel', endPointer);
+view.addEventListener('contextmenu', (e) => e.preventDefault());
+view.addEventListener('wheel', (e) => {
+  if (!M) return;
+  e.preventDefault();
+  const r = view.getBoundingClientRect(), cx = e.clientX - r.left, cy = e.clientY - r.top;
+  const k = Math.pow(1.0015, -e.deltaY * (e.deltaMode === 1 ? 33 : 1));
+  const ns = Math.min(40, Math.max(0.05, V.s * k));
+  V.x = cx - (cx - V.x) * (ns / V.s); V.y = cy - (cy - V.y) * (ns / V.s); V.s = ns;
+  draw();
+}, { passive: false });
+new ResizeObserver(resizeView).observe(view);
+
+/* =====================================================================
+   Province info panel
+   ===================================================================== */
+function select(id, center) {
+  selected = id;
+  buildSelectionOverlay(id);
+  if (center) centerOn(id); else draw();
+  showInfo(id);
+  showTab('pane-info');
+}
+function showInfo(id) {
+  const p = M.byId.get(id);
+  $('info-empty').hidden = true; $('info').hidden = false;
+  $('i-title').textContent = t('info.header');
+  $('i-name').textContent = p?.name || t('info.unnamed');
+  $('i-id').textContent = id;
+  const area = M.provArea.get(id), region = area && M.areaRegion.get(area), sup = region && M.regionSuper.get(region);
+  $('i-area').textContent = area || t('info.unknown');
+  $('i-region').textContent = region || t('info.unknown');
+  $('i-super').textContent = sup || t('info.unknown');
+  const isWater = M.sea.has(id), isWaste = M.waste.has(id);
+  const D = M.def, showDef = D.has && !isWater && !isWaste && id <= M.maxId;
+  document.querySelectorAll('.defrow').forEach(el => el.hidden = !showDef);
+  if (showDef) {
+    $('i-terrain').textContent = D.cat[id] ? `${D.cat[id]} · ${t(D.src[id] === 1 ? 'def.src.override' : 'def.src.bmp')}` : t('info.unknown');
+    $('i-pen').textContent = D.pen[id] ? `−${D.pen[id]}` : '0';
+    const tl = Math.round(D.loc[id] * 100), gl = Math.round(D.goodLoc[id] * 100);
+    $('i-loc').textContent = `+${tl + gl}%` + (gl ? ` (${t('def.terrain_part', tl)}, ${t('def.good_part', gl, D.good[id])})` : '');
+    $('i-good').textContent = D.good[id] || (D.historyCount ? '—' : t('def.no_history_short'));
+    $('i-score').textContent = fmtScore(defScore(id));
+  }
+  $('i-status').innerHTML = isWater ? `<span class="chip water">${esc(t('info.status.water'))}</span>`
+    : isWaste ? `<span class="chip waste">${esc(t('info.status.wasteland'))}</span>`
+    : M.forts.has(id) ? `<span class="chip fort">${esc(t('info.status.fort'))}</span>` : '';
+  const land = !isWater && !isWaste;
+  $('i-fortline').hidden = !land; $('i-actions').hidden = !land; $('i-nbr-wrap').hidden = !land;
+  $('i-fort').checked = M.forts.has(id);
+  const nb = [...(M.adj.get(id) || [])].sort((a, b) => a - b);
+  $('i-nbrs').innerHTML = nb.length
+    ? nb.map(n => `<button data-goto="${n}"><span class="mono">${n}</span> ${esc(M.byId.get(n)?.name || '')}</button>`).join('')
+    : `<span class="muted">${esc(t('info.no_neighbors'))}</span>`;
+}
+$('i-nbrs').addEventListener('click', (e) => { const b = e.target.closest('[data-goto]'); if (b) select(+b.dataset.goto, true); });
+$('i-fort').addEventListener('change', (e) => {
+  if (selected == null) return;
+  if (e.target.checked) M.forts.add(selected); else M.forts.delete(selected);
+  store.set(fortsKey, JSON.stringify([...M.forts]));
+  updateFortCount(); showInfo(selected);
+  if (mode === 'forts') renderMap();
+});
+function updateFortCount() { if (M) $('forts-count').textContent = t('forts.count', M.forts.size); }
+$('btn-forts-dl').addEventListener('click', () => {
+  if (!M) return;
+  const txt = [...M.forts].sort((a, b) => a - b).join('\n') + '\n';
+  download(new Blob([txt], { type: 'text/plain' }), 'forts.txt');
+});
+function appendLine(area, line) { const ta = $(area); ta.value = ta.value.replace(/\s*$/, '') + (ta.value.trim() ? '\n' : '') + line; saveDraft(); }
+$('i-add-cov').addEventListener('click', () => { appendLine('f-coverage', `province, ${selected}`); setMode('optimization'); showTab('pane-opt'); });
+$('i-add-req').addEventListener('click', () => { appendLine('f-required', String(selected)); setMode('optimization'); showTab('pane-opt'); });
+
+/* =====================================================================
+   Selectors (ported from Optimization/SelectorParser.cs)
+   ===================================================================== */
+function matchName(actual, query, suffix) {
+  const a = actual.toLowerCase(), q = query.toLowerCase();
+  if (a === q) return true;
+  const strip = (s) => s.endsWith(suffix) ? s.slice(0, -suffix.length) : s;
+  return strip(a) === strip(q);
+}
+function isLand(p) { return !M.sea.has(p) && !M.waste.has(p); }
+function parseCoverage(text, errors) {
+  const res = new Set();
+  const add = (p) => { if (isLand(p)) res.add(p); };
+  const areaByName = (n) => M.areas.find(a => a.name.toLowerCase() === n.toLowerCase());
+  const regionByName = (n) => M.regions.find(r => r.name.toLowerCase() === n.toLowerCase());
+  for (const raw of text.split('\n')) {
+    const line = raw.trim(); if (!line || line.startsWith('#')) continue;
+    const c = line.indexOf(',');
+    if (c < 0) { errors.push(t('parser.bad_line', line)); continue; }
+    const kind = line.slice(0, c).trim().toLowerCase(), arg = line.slice(c + 1).trim();
+    if (['province', 'prov', 'p'].includes(kind)) {
+      if (/^\d+$/.test(arg)) add(+arg);
+      else if (M.nameToId.has(arg.toLowerCase())) add(M.nameToId.get(arg.toLowerCase()));
+      else errors.push(t('parser.unknown_province', arg));
+    } else if (['area', 'a'].includes(kind)) {
+      const a = M.areas.find(x => matchName(x.name, arg, '_area'));
+      if (!a) { errors.push(t('parser.unknown_area', arg)); continue; }
+      a.ids.forEach(add);
+    } else if (['region', 'r'].includes(kind)) {
+      const r = M.regions.find(x => matchName(x.name, arg, '_region'));
+      if (!r) { errors.push(t('parser.unknown_region', arg)); continue; }
+      r.areas.forEach(an => areaByName(an)?.ids.forEach(add));
+    } else if (['superregion', 's'].includes(kind)) {
+      const s = M.superregions.find(x => matchName(x.name, arg, '_superregion'));
+      if (!s) { errors.push(t('parser.unknown_superregion', arg)); continue; }
+      s.regions.forEach(rn => regionByName(rn)?.areas.forEach(an => areaByName(an)?.ids.forEach(add)));
+    } else errors.push(t('parser.unknown_selector', kind));
+  }
+  return res;
+}
+function parseIdList(text) {
+  const res = new Set();
+  for (let line of text.split(/\r?\n/)) {
+    const h = line.indexOf('#'); if (h >= 0) line = line.slice(0, h);
+    for (const tok of line.split(/[,\s;]+/)) if (/^\d+$/.test(tok)) res.add(+tok);
+  }
+  return res;
+}
+function parseGroups(text, errors) {
+  const res = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trim(); if (!line || line.startsWith('#')) continue;
+    const parts = line.split(':').map(s => s.trim());
+    if (parts.length < 3) { errors.push(t('parser.bad_group', line)); continue; }
+    const min = parts[parts.length - 1];
+    if (!/^\d+$/.test(min)) { errors.push(t('parser.bad_group_min', line)); continue; }
+    res.push({ name: parts[0], provinces: parseIdList(parts[1]), min: +min });
+  }
+  return res;
+}
+
+/* =====================================================================
+   Optimization (ported from Optimization/DominatingSetSolver.cs, solved by HiGHS)
+   ===================================================================== */
+const cfgFields = { CoverageText: 'f-coverage', RequiredText: 'f-required', PreferredText: 'f-preferred', ExcludedText: 'f-excluded', GroupsText: 'f-groups' };
+function currentConfig() {
+  const c = {}; for (const [k, id] of Object.entries(cfgFields)) c[k] = $(id).value;
+  c.Mode = $('f-mode').value; c.TimeLimitSeconds = Math.max(1, +$('f-time').value || 10);
+  c.Terrain = $('f-terrain').value; c.WeightAttackerPenalty = +$('f-w-pen').value; c.WeightLocalDefensiveness = +$('f-w-loc').value;
+  return c;
+}
+function applyConfig(c) {
+  for (const [k, id] of Object.entries(cfgFields)) $(id).value = (c[k] ?? '').replace(/\r\n/g, '\n');
+  const modes = ['NoAdjacent', 'Homebrew', 'AnyAdjacent'];
+  $('f-mode').value = typeof c.Mode === 'number' ? modes[c.Mode] : (modes.includes(c.Mode) ? c.Mode : 'NoAdjacent');
+  if (c.TimeLimitSeconds) $('f-time').value = c.TimeLimitSeconds;
+  if (c.Terrain === 'off' || c.Terrain === 'tiebreak') $('f-terrain').value = c.Terrain;
+  if (c.WeightAttackerPenalty != null) $('f-w-pen').value = c.WeightAttackerPenalty;
+  if (c.WeightLocalDefensiveness != null) $('f-w-loc').value = c.WeightLocalDefensiveness;
+  saveDraft();
+}
+function saveDraft() { store.set('eu4flo.draft', JSON.stringify(currentConfig())); }
+Object.values(cfgFields).concat(['f-mode', 'f-time', 'f-terrain', 'f-w-pen', 'f-w-loc']).forEach(id => $(id).addEventListener('change', saveDraft));
+
+function showMsgs(list) {
+  $('msgs').innerHTML = list.map(m => `<div class="msg ${m.kind}">${m.html ?? esc(m.text)}</div>`).join('');
+}
+function solutionLines(sol) {
+  return [...sol].sort((a, b) => a - b);
+}
+
+let worker = null, runStarted = 0;
+function setRunning(on) {
+  $('btn-run').hidden = on; $('btn-stop').hidden = !on;
+}
+function runOptimization(forceWholeMap = false) {
+  if (!M) { showMsgs([{ kind: 'error', text: t('msg.load_first') }]); return; }
+  previewPalette.clear();
+  const cfg = currentConfig(); saveDraft();
+  const covErr = [];
+  let coverage = parseCoverage(cfg.CoverageText, covErr);
+  if (covErr.length) { showMsgs([{ kind: 'error', text: t('opt.msg.parse_errors') + '\n' + covErr.join('\n') }]); return; }
+  if (!cfg.CoverageText.trim()) {
+    if (!forceWholeMap) {
+      showMsgs([{ kind: 'warn', html: `${esc(t('opt.msg.empty_coverage_warning'))}<div class="row"><button class="btn small" id="btn-whole">${esc(t('opt.btn.whole_map'))}</button></div>` }]);
+      $('btn-whole').onclick = () => runOptimization(true);
+      return;
+    }
+    coverage = new Set(M.provinces.map(p => p.id).filter(isLand));
+  } else if (!coverage.size) { showMsgs([{ kind: 'warn', text: t('opt.msg.no_valid_coverage') }]); return; }
+
+  const required = parseIdList(cfg.RequiredText), preferred = parseIdList(cfg.PreferredText), exceptions = parseIdList(cfg.ExcludedText);
+  const gErr = []; const groups = parseGroups(cfg.GroupsText, gErr);
+  if (gErr.length) { showMsgs([{ kind: 'error', text: t('opt.msg.parse_errors') + '\n' + gErr.join('\n') }]); return; }
+
+  const cand = new Set(coverage); required.forEach(p => cand.add(p));
+  for (const p of [...cand]) if (!isLand(p)) cand.delete(p);
+  const warns = [];
+  for (const p of required) if (!cand.has(p)) warns.push(t('solver.warn.required_not_in_candidates', p));
+  if (warns.length) { showMsgs(warns.map(text => ({ kind: 'error', text }))); return; }
+
+  // ---- build the LP model (CPLEX LP format) ----
+  const x = (p) => 'x' + p;
+  const L = ['Minimize', ' obj:'];
+  let line = '';
+  const flush = (arr) => { if (line) { arr.push('   ' + line); line = ''; } };
+  let n = 0;
+  for (const p of cand) { line += ` + ${preferred.has(p) ? 999 : 1000} ${x(p)}`; if (++n % 12 === 0) flush(L); }
+  flush(L);
+  const iSubject = L.length;
+  L.push('Subject To');
+  const uncovered = [];
+  let rc = 0;
+  const pushRow = (terms, rhs) => {
+    L.push(` c${rc++}:`);
+    for (let i = 0; i < terms.length; i += 14) L.push('   ' + terms.slice(i, i + 14).map((v, j) => (i + j ? '+ ' : '') + v).join(' '));
+    L.push('   ' + rhs);
+  };
+  for (const u of coverage) {
+    const terms = [];
+    if (cand.has(u)) terms.push(x(u));
+    for (const v of M.adj.get(u) || []) if (cand.has(v)) terms.push(x(v));
+    if (!terms.length) uncovered.push(u); else pushRow(terms, '>= 1');
+  }
+  if (uncovered.length) { showMsgs([{ kind: 'error', text: t('solver.warn.uncovered', uncovered.slice(0, 30).join(', ') + (uncovered.length > 30 ? ' …' : '')) }]); return; }
+  for (const p of required) pushRow([x(p)], '>= 1');
+  if (cfg.Mode !== 'AnyAdjacent') {
+    for (const u of cand) for (const v of M.adj.get(u) || []) {
+      if (u < v && cand.has(v)) {
+        if (cfg.Mode === 'Homebrew' && (exceptions.has(u) || exceptions.has(v))) continue;
+        pushRow([x(u), x(v)], '<= 1');
+      }
+    }
+  }
+  const notes = [];
+  for (const g of groups) {
+    const inside = [...g.provinces].filter(p => cand.has(p)), outside = [...g.provinces].filter(p => !cand.has(p));
+    if (inside.length < g.min) { showMsgs([{ kind: 'error', text: t('solver.warn.group_min', g.name, g.min) }]); return; }
+    if (outside.length) notes.push({ kind: 'warn', text: t('solver.warn.group_outside', g.name, outside.join(', ')) });
+    if (g.min > 0) pushRow(inside.map(x), `>= ${g.min}`);
+  }
+  const iBinary = L.length;
+  L.push('Binary');
+  const cl = [...cand]; for (let i = 0; i < cl.length; i += 16) L.push('   ' + cl.slice(i, i + 16).map(x).join(' '));
+  L.push('End');
+
+  // Phase 2 (terrain): keep the fort count found in phase 1 (__K__), keep the same number of
+  // preferred forts, and among those layouts pick the one with the highest total defense score.
+  const W = defWeights();
+  const useTerrain = cfg.Terrain === 'tiebreak' && M.def.has && (W.pen > 0 || W.loc > 0);
+  let lp2 = null;
+  if (useTerrain) {
+    const P = [];
+    let l2 = '', k = 0;
+    for (const p of cand) {
+      const coef = Math.round(defScore(p, W) * 10) + (preferred.has(p) ? 1e6 : 0);
+      if (coef > 0) { l2 += ` + ${coef} ${x(p)}`; if (++k % 12 === 0) { P.push('   ' + l2); l2 = ''; } }
+    }
+    if (l2) P.push('   ' + l2);
+    if (P.length) {
+      const count = [];
+      for (let i = 0; i < cl.length; i += 14) count.push('   ' + cl.slice(i, i + 14).map((p, j) => (i + j ? '+ ' : '') + x(p)).join(' '));
+      lp2 = ['Maximize', ' obj:', ...P, ...L.slice(iSubject, iBinary), ' cK:', ...count, '   <= __K__', ...L.slice(iBinary)].join('\n');
+    }
+  }
+
+  // ---- solve in a worker ----
+  if (worker) worker.terminate();
+  try { worker = new Worker('solver-worker.js'); }
+  catch (e) { showMsgs([{ kind: 'error', text: t('opt.msg.worker_failed', e.message) }]); return; }
+  runStarted = performance.now();
+  setRunning(true);
+  showMsgs([{ kind: 'ok', html: `<span class="spinner"></span>${esc(t('opt.msg.running', cand.size))}` }, ...notes]);
+  worker.onerror = (e) => { setRunning(false); worker = null; showMsgs([{ kind: 'error', text: t('opt.msg.worker_failed', e.message || 'worker error') }]); };
+  worker.onmessage = (e) => {
+    worker.terminate(); worker = null; setRunning(false);
+    const r = e.data, secs = ((performance.now() - runStarted) / 1000).toFixed(1);
+    if (!r.ok) { showMsgs([{ kind: 'error', text: t('solver.warn.exception', r.error) }, ...notes]); return; }
+    // verify coverage independently of the solver; fall back to the phase-1 layout if phase 2 misbehaved
+    const covers = (s) => s.size > 0 && [...coverage].every(u => s.has(u) || [...(M.adj.get(u) || [])].some(v => s.has(v)));
+    let sol = new Set(r.chosen.filter(p => cand.has(p)));
+    const sol1 = new Set((r.chosen1 || []).filter(p => cand.has(p)));
+    if (!covers(sol) && covers(sol1)) sol = sol1;
+    const valid = covers(sol);
+    r.base2 = [...sol1].reduce((s, p) => s + defScore(p, W), 0);
+    if (!valid) {
+      const timeout = /time limit/i.test(r.status);
+      showMsgs([{ kind: 'error', text: timeout ? t('solver.warn.no_solution_time') : t('solver.warn.failed', r.status) }, ...notes]);
+      return;
+    }
+    const inGroup = new Set(); groups.forEach(g => g.provinces.forEach(p => inGroup.add(p)));
+    optSolution = sol; optPalette = new Map();
+    const roleOf = (p) => required.has(p) ? 'required' : preferred.has(p) ? 'preferred' : exceptions.has(p) ? 'exceptional' : inGroup.has(p) ? 'group' : 'default';
+    for (const p of sol) optPalette.set(p, COL[{ required: 'required', preferred: 'preferred', exceptional: 'exceptional', group: 'group', default: 'def' }[roleOf(p)]]);
+    const optimal = r.status === 'Optimal';
+    const out = [{ kind: optimal ? 'ok' : 'warn', text: optimal ? t('opt.msg.complete', sol.size, secs) : t('solver.warn.time_limit', sol.size, secs) }];
+    if (lp2) {
+      const total = [...sol].reduce((s, p) => s + defScore(p, W), 0);
+      if (r.status2 === 'Optimal') out.push({ kind: 'ok', text: t('def.msg.done', fmtScore(total), fmtScore(r.base2 != null ? r.base2 : total)) });
+      else if (r.status2) out.push({ kind: 'warn', text: t('def.msg.partial', r.status2, fmtScore(total)) });
+    }
+    showMsgs([...out, ...notes]);
+    showResults(sol, roleOf);
+    setMode('optimization', true);
+  };
+  worker.postMessage({ lp: L.join('\n'), lp2, timeLimit: cfg.TimeLimitSeconds });
+}
+function showResults(sol, roleOf) {
+  const ids = solutionLines(sol);
+  const D = M.def, W = defWeights();
+  const defCell = (p) => {
+    if (!D.has) return '';
+    const bits = [D.cat[p] || '?'];
+    if (D.goodLoc[p] > 0) bits.push(D.good[p]);
+    return `<td title="${esc(bits.join(' + '))}">${fmtScore(defScore(p, W))} <span class="tag">${esc(bits.join(' + '))}</span></td>`;
+  };
+  const rows = ids.map(p => `<tr data-goto="${p}"><td class="mono">${p}</td><td>${esc(M.byId.get(p)?.name || '')}</td><td>${esc(t('opt.role.' + roleOf(p)))}</td>${defCell(p)}</tr>`).join('');
+  const total = D.has ? ` · ${esc(t('def.total', fmtScore(ids.reduce((s, p) => s + defScore(p, W), 0))))}` : '';
+  $('results').innerHTML = `<div class="row" style="justify-content:space-between;margin-bottom:6px"><b>${esc(t('opt.output.count', ids.length))}${total}</b>
+    <span class="row"><button class="btn small" id="btn-copy">${esc(t('opt.btn.copy'))}</button></span></div>
+    <div style="overflow-x:auto"><table><thead><tr><th>${esc(t('opt.output.id'))}</th><th>${esc(t('opt.output.name'))}</th><th>${esc(t('opt.output.role'))}</th>${D.has ? `<th>${esc(t('opt.output.defense'))}</th>` : ''}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  $('results').hidden = false;
+  $('btn-copy').onclick = async () => {
+    const txt = ids.join('\n');
+    try { await navigator.clipboard.writeText(txt); $('btn-copy').textContent = t('opt.msg.copied', ids.length); }
+    catch { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+  };
+}
+$('results').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-goto]'); if (tr) select(+tr.dataset.goto, true); });
+$('btn-run').addEventListener('click', () => runOptimization(false));
+$('btn-stop').addEventListener('click', () => { if (worker) { worker.terminate(); worker = null; } setRunning(false); showMsgs([{ kind: 'warn', text: t('opt.msg.stopped') }]); });
+$('btn-reset-opt').addEventListener('click', () => {
+  optSolution = new Set(); optPalette = new Map(); previewPalette = new Map();
+  $('results').hidden = true; showMsgs([]);
+  if (M && mode === 'optimization') renderMap();
+});
+
+/* previews (non-destructive, they stack) */
+document.querySelectorAll('[data-preview]').forEach(b => b.addEventListener('click', () => {
+  if (!M) { showMsgs([{ kind: 'error', text: t('msg.load_first') }]); return; }
+  const cfg = currentConfig(), kind = b.dataset.preview;
+  if (kind === 'coverage') {
+    let cov = parseCoverage(cfg.CoverageText, []);
+    if (!cov.size) cov = new Set(M.provinces.map(p => p.id).filter(isLand));
+    cov.forEach(p => previewPalette.set(p, COL.covPreview));
+  } else if (kind === 'required') parseIdList(cfg.RequiredText).forEach(p => previewPalette.set(p, COL.required));
+  else if (kind === 'preferred') parseIdList(cfg.PreferredText).forEach(p => previewPalette.set(p, COL.preferred));
+  else if (kind === 'excluded') parseIdList(cfg.ExcludedText).forEach(p => previewPalette.set(p, COL.exceptional));
+  else if (kind === 'groups') {
+    const used = [COL.covPreview, COL.required, COL.preferred, COL.exceptional, ...previewPalette.values()];
+    const dist = (a, c) => Math.hypot(a[0] - c[0], a[1] - c[1], a[2] - c[2]);
+    for (const g of parseGroups(cfg.GroupsText, [])) {
+      let c, guard = 0;
+      do { c = [60 + Math.random() * 160 | 0, 60 + Math.random() * 160 | 0, 60 + Math.random() * 160 | 0]; } while (++guard < 500 && used.some(u => dist(u, c) < 90));
+      used.push(c); g.provinces.forEach(p => previewPalette.set(p, c));
+    }
+  }
+  setMode('optimization', true);
+}));
+
+/* config save / load / example */
+$('btn-save-cfg').addEventListener('click', () => download(new Blob([JSON.stringify(currentConfig(), null, 2)], { type: 'application/json' }), 'optimization.json'));
+$('btn-load-cfg').addEventListener('click', () => $('in-cfg').click());
+$('in-cfg').addEventListener('change', async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try { applyConfig(JSON.parse(await readText(f))); showMsgs([]); }
+  catch (err) { showMsgs([{ kind: 'error', text: err.message }]); }
+  e.target.value = '';
+});
+// Examples/Anbennar/Rogieria_Homebrew.txt from the original repository
+const EXAMPLE = {"CoverageText":"region, west_castanor_region\nregion, south_castanor_region\nregion, inner_castanor_region\narea, whistlevale_area\narea, cursewood_area","RequiredText":"# Bal Mire\n229\n# Entalenham\n725\n\n# Optional - don't paste if not going to use!\n# Marrhold\n4097\n# Khugdihr\n2863","PreferredText":"# Bal Mire\n229\n# North Citadel\n840\n#province_group = white_walls\n746\n747\n754\n755\n756\n828\n829\n830\n837\n850\n855\n860\n862\n865\n866\n869\n873\n874\n# Marrhold\n4097\n\n# Optional - don't paste if not going to use!\n# Bal Dostan\n441\n# Khugdihr\n2863","ExcludedText":"# From Homebrew:\n#province_group = hold_province\n62\n526\n4149\n4119\n4128\n4122\n4208\n2868\n2931\n4236\n4056\n4039\n2973\n4093\n4217\n4218\n4078\n4247\n4284\n4350\n4311\n4313\n4265\n4266\n4323\n2863\n4097\n2963\n4100\n2942\n4238\n4124\n2914\n912\n4020\n4147\n5424\n#province_group = white_walls\n746\n747\n754\n755\n756\n828\n829\n830\n837\n850\n855\n860\n862\n865\n866\n869\n873\n874\n# province_group = wall_of_yanshen\n4834\n4833\n4830\n5409\n4843\n4975\n4921\n4919\n4918\n4922\n4923\n4924\n# province_group = surakes_bulwari_borders\n680\n519\n534\n650\n676\n3263\n643\n2915\n2922\n4376\n2913\n566\n2908\n#province_group = porcelain_cities\n4470\n4500\n4600\n4493\n4396\n4409\n#golden highway\n4816\n#taric_and_cagodic_conversion_provinces\n4173\n4174\n4176\n#????\n4201\n4198\n#Escann\n854\n831\n832\n230\n231\n248\n229\n355\n358\n710\n725\n726\n730\n732\n741\n742\n778\n779\n803\n#Gelkalis MT\n675\n677\n678\n#Dwarovrod\n2895\n#Dwarovrod / Gronstunad MT\n4300\n4302\n#Spiderswretch MT\n5052","GroupsText":"Falsemire: 762,761,759 : 1\nAdenica: 763,765,792: 1\nSilvervord: 760,757,767,756: 1","Mode":"Homebrew"};
+$('btn-example').addEventListener('click', () => applyConfig(EXAMPLE));
+
+/* =====================================================================
+   Province tree
+   ===================================================================== */
+function provLabel(p) {
+  const pr = M.byId.get(p);
+  const tag = M.sea.has(p) ? ` <span class="tag">${esc(t('tree.tag.water'))}</span>` : M.waste.has(p) ? ` <span class="tag">${esc(t('tree.tag.wasteland'))}</span>` : '';
+  return `<button class="leaf" data-goto="${p}">${esc(pr?.name || t('info.unnamed'))} <span class="mono tag">(${p})</span>${tag}</button>`;
+}
+function lazyDetails(label, count, fill) {
+  const d = document.createElement('details');
+  d.innerHTML = `<summary>${esc(label)}<span class="n">${count}</span></summary>`;
+  d.addEventListener('toggle', () => { if (d.open && !d._filled) { d._filled = true; fill(d); } });
+  return d;
+}
+function buildTree() {
+  const root = $('tree'); root.innerHTML = '';
+  const areaByName = new Map(M.areas.map(a => [a.name, a]));
+  const regionByName = new Map(M.regions.map(r => [r.name, r]));
+  const addArea = (parent, a) => parent.appendChild(lazyDetails(a.name, a.ids.length, d => d.insertAdjacentHTML('beforeend', [...a.ids].sort((x, y) => x - y).map(provLabel).join(''))));
+  const addRegion = (parent, r) => parent.appendChild(lazyDetails(r.name, r.areas.length, d => r.areas.forEach(an => areaByName.has(an) && addArea(d, areaByName.get(an)))));
+  for (const s of M.superregions) root.appendChild(lazyDetails(s.name, s.regions.length, d => s.regions.forEach(rn => regionByName.has(rn) && addRegion(d, regionByName.get(rn)))));
+  const inSuper = new Set(M.superregions.flatMap(s => s.regions));
+  const orphanR = M.regions.filter(r => !inSuper.has(r.name));
+  if (orphanR.length) root.appendChild(lazyDetails(t('tree.orphan.regions'), orphanR.length, d => orphanR.forEach(r => addRegion(d, r))));
+  const inRegion = new Set(M.regions.flatMap(r => r.areas));
+  const orphanA = M.areas.filter(a => !inRegion.has(a.name));
+  if (orphanA.length) root.appendChild(lazyDetails(t('tree.orphan.areas'), orphanA.length, d => orphanA.forEach(a => addArea(d, a))));
+  const orphanP = M.provinces.filter(p => !M.provArea.has(p.id)).map(p => p.id);
+  if (orphanP.length) root.appendChild(lazyDetails(t('tree.orphan.provinces'), orphanP.length, d => d.insertAdjacentHTML('beforeend', orphanP.map(provLabel).join(''))));
+}
+document.querySelector('#pane-tree').addEventListener('click', (e) => { const b = e.target.closest('[data-goto]'); if (b) select(+b.dataset.goto, true); });
+$('tree-search').addEventListener('input', (e) => {
+  const q = e.target.value.trim().toLowerCase(), box = $('tree-results');
+  if (!M || !q) { box.hidden = true; $('tree').hidden = false; return; }
+  const hits = M.provinces.filter(p => String(p.id) === q || p.name.toLowerCase().includes(q) || String(p.id).startsWith(q));
+  box.innerHTML = hits.slice(0, 200).map(p => provLabel(p.id)).join('') + (hits.length > 200 ? `<div class="muted">${esc(t('tree.more', hits.length - 200))}</div>` : '');
+  box.hidden = false; $('tree').hidden = true;
+});
+
+/* =====================================================================
+   Exports
+   ===================================================================== */
+$('btn-export').addEventListener('click', () => {
+  const lines = [];
+  const areaByName = new Map(M.areas.map(a => [a.name, a])), regionByName = new Map(M.regions.map(r => [r.name, r]));
+  const provLine = (p, ind) => lines.push(`${ind}${p} : ${M.waste.has(p) ? 'wasteland' : [...(M.adj.get(p) || [])].sort((a, b) => a - b).join(', ')}`);
+  for (const s of M.superregions) {
+    lines.push('# ' + s.name);
+    for (const rn of s.regions) {
+      const r = regionByName.get(rn); if (!r) continue;
+      lines.push('    # ' + rn);
+      for (const an of r.areas) {
+        const a = areaByName.get(an); if (!a) continue;
+        lines.push('        # ' + an);
+        [...a.ids].sort((x, y) => x - y).forEach(p => provLine(p, '            '));
+      }
+    }
+    lines.push('');
+  }
+  const orphans = M.provinces.map(p => p.id).filter(p => !M.sea.has(p) && !M.provArea.has(p)).sort((a, b) => a - b);
+  if (orphans.length) { lines.push('# (provinces not assigned to any area)'); orphans.forEach(p => provLine(p, '    ')); }
+  download(new Blob([lines.join('\n') + '\n'], { type: 'text/plain' }), 'adjacency.txt');
+});
+$('btn-save-map').addEventListener('click', () => mapCanvas.toBlob(b => download(b, 'map.png'), 'image/png'));
+$('btn-save-view').addEventListener('click', () => view.toBlob(b => download(b, 'map_view.png'), 'image/png'));
+$('btn-reset-view').addEventListener('click', fitView);
+
+/* =====================================================================
+   Modes, tabs, loading UI
+   ===================================================================== */
+function setMode(m, forceRender) {
+  const changed = m !== mode;
+  mode = m; $('sel-mode').value = m;
+  if (M && (changed || forceRender)) renderMap();
+}
+$('sel-mode').addEventListener('change', (e) => setMode(e.target.value));
+function showTab(paneId) {
+  document.querySelectorAll('.tabs [role=tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.pane === paneId)));
+  document.querySelectorAll('.pane').forEach(p => p.hidden = p.id !== paneId);
+}
+document.querySelectorAll('.tabs [role=tab]').forEach(b => b.addEventListener('click', () => showTab(b.dataset.pane)));
+
+$('btn-folder').addEventListener('click', () => $('in-folder').click());
+$('btn-folder-2').addEventListener('click', () => $('in-folder').click());
+$('btn-files').addEventListener('click', () => $('in-files').click());
+for (const id of ['in-folder', 'in-files']) $(id).addEventListener('change', (e) => { if (e.target.files.length) loadMap([...e.target.files]); e.target.value = ''; });
+// extra folder (e.g. history/provinces) merged into the already loaded files; keep the user's fort edits
+$('in-extra').addEventListener('change', async (e) => {
+  if (!e.target.files.length) return;
+  const files = [...e.target.files].map(f => {
+    const p = f.webkitRelativePath || f.name;
+    // a picked "provinces" folder still needs to look like history/provinces/<file>
+    if (/^provinces\//i.test(p)) f._path = 'history/' + p;
+    return f;
+  });
+  e.target.value = '';
+  const keepMode = mode, keepSel = selected;
+  await loadMap(files, true);
+  setMode(keepMode, true); if (keepSel != null && M) select(keepSel, false);
+});
+
+// drag & drop a folder (or files) anywhere on the map area
+async function entriesToFiles(entries) {
+  const out = [];
+  const readDir = (dir) => new Promise((res) => {
+    const r = dir.createReader(), all = [];
+    const next = () => r.readEntries(batch => { if (!batch.length) res(all); else { all.push(...batch); next(); } }, () => res(all));
+    next();
+  });
+  const fileOf = (fe) => new Promise((res) => fe.file(f => { f._path = fe.fullPath.replace(/^\//, ''); res(f); }, () => res(null)));
+  async function walk(entry, depth) {
+    if (entry.isFile) { const f = await fileOf(entry); if (f) out.push(f); return; }
+    if (depth > 3) return;
+    for (const e of await readDir(entry)) {
+      // only descend into the dropped folder itself and folders named map (or common/ on the way to it)
+      if (e.isDirectory && !/^(map|common|history|provinces|tradegoods)$/i.test(e.name)) continue;
+      await walk(e, depth + 1);
+    }
+  }
+  for (const e of entries) if (e) await walk(e, 0);
+  return out;
+}
+const stage = $('stage');
+stage.addEventListener('dragover', (e) => { e.preventDefault(); $('drop').classList.add('over'); });
+stage.addEventListener('dragleave', (e) => { if (!stage.contains(e.relatedTarget)) $('drop').classList.remove('over'); });
+stage.addEventListener('drop', async (e) => {
+  e.preventDefault(); $('drop').classList.remove('over');
+  const items = [...(e.dataTransfer.items || [])];
+  const entries = items.map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  const files = entries.length ? await entriesToFiles(entries) : [...e.dataTransfer.files];
+  if (files.length) loadMap(files);
+});
+
+/* init */
+(function init() {
+  const savedLang = store.get('eu4flo.lang');
+  LANG = savedLang || ((navigator.language || '').toLowerCase().startsWith('ru') ? 'ru' : 'en');
+  $('sel-lang').value = LANG;
+  $('sel-lang').addEventListener('change', (e) => { LANG = e.target.value; store.set('eu4flo.lang', LANG); applyI18n(); });
+  applyI18n();
+  const draft = store.get('eu4flo.draft');
+  if (draft) { try { applyConfig(JSON.parse(draft)); } catch {} }
+  resizeView();
+})();
+</script>
+</body>
+</html>
