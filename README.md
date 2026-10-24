@@ -17,7 +17,7 @@ in the repository — just static files.
 
 ## Feature parity with the desktop app
 
-- Map modes: Provinces, Area, Region, Superregion, Forts, Optimization
+- Map modes: Political, Provinces, Area, Region, Superregion, Forts, Defense, Optimization
 - Zoom (wheel / pinch), pan (drag), click a province for its info panel, neighbour list
 - Fort editing (kept in the browser; **Download forts.txt** to save it to your map folder)
 - Province tree with search
@@ -26,6 +26,38 @@ in the repository — just static files.
   NoAdjacent / Homebrew / AnyAdjacent modes, "Show on map" previews, save/load config
   (same JSON format as the desktop app — old configs load directly)
 - English and Russian UI
+
+## New: your country, savegames, and zones of control
+
+- **Political map at game start.** When the game or mod folder is loaded, the default map
+  shows every country's provinces in its own colour, read from `history/provinces`
+  (`owner = TAG`) and `common/country_tags` + `common/countries` (`color = { r g b }`).
+- **Load a savegame (.eu4)** on the Country tab. The page reads the owner and the fort
+  buildings (`fort_15th` … `fort_18th`, and any mod building whose name starts with `fort`)
+  of every province, plus each country's map colour, and selects the country you are playing.
+  Plain and compressed saves work; Ironman (binary) saves don't — convert them to text first
+  (for example with pdx.tools). Everything is read in your browser.
+- **My country.** Pick a tag to make its provinces your territory. The Forts map mode then
+  shows your territory, your forts (green), other countries' forts (grey) and each fort's
+  zone of control (the fort province and its neighbours, hatched).
+- **Click tools** in the top bar:
+  - *Inspect* — click a province for its details (default).
+  - *Mark territory* — click to add or remove a province; drag to paint several.
+  - *Mark forts* — click to add or remove a fort; its zone of control appears immediately.
+- **Into the optimizer:** *Cover my territory* sets the coverage to `territory, mine`
+  (a new selector), *Keep my forts* puts your existing forts into the required list.
+- Territory and fort edits are remembered in your browser.
+
+## Terrain priority
+
+Under *Terrain and salt → What counts most*:
+
+- *Balanced* — weighted score (attacker penalty × weight A + local defensiveness % × weight B).
+- *Attacker penalty first* — the attacker penalty decides; local defensiveness only breaks ties.
+- *Local defensiveness first* — local defensiveness (terrain + salt) decides; attacker penalty only breaks ties.
+
+Terrain that gives both (mountains: −2 and +25%) stays on top in every mode. The number of
+forts always stays at the minimum; terrain only chooses between equally small layouts.
 
 ## New: terrain and salt
 

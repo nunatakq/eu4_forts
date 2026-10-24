@@ -99,6 +99,7 @@ select { padding-right: 4px; }
 .legend span { display: flex; align-items: center; gap: 7px; }
 .sw { width: 13px; height: 13px; border-radius: 2px; border: 1px solid rgba(0,0,0,.35); flex: none; }
 .sw.hatch { background: repeating-linear-gradient(45deg, rgb(60,200,60) 0 3px, #fff 3px 6px); }
+.sw.hatch.grey { background: repeating-linear-gradient(45deg, rgb(120,120,120) 0 3px, #fff 3px 6px); }
 
 /* empty state */
 .empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; overflow: auto; }
@@ -173,6 +174,19 @@ select { padding-right: 4px; }
 .weights input { width: 100%; }
 .ramp { width: 120px; height: 10px; border-radius: 2px; border: 1px solid rgba(0,0,0,.35); background: linear-gradient(90deg, rgb(244,240,226), rgb(214,170,96), rgb(150,74,32), rgb(70,30,20)); }
 
+.seg { appearance: none; border: 1px solid var(--line); background: var(--surface-2); padding: 5px 10px; font-size: .88rem; cursor: pointer; margin-left: -1px; white-space: nowrap; }
+.seg:first-of-type { border-radius: var(--r) 0 0 var(--r); margin-left: 0; }
+.seg:last-of-type { border-radius: 0 var(--r) var(--r) 0; }
+.seg[aria-checked=true] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); position: relative; }
+.seg:disabled { opacity: .45; cursor: not-allowed; }
+.tools { gap: 0; }
+.tools #tools-label { margin-right: 6px; font-size: .9rem; }
+#view.paint { cursor: cell; }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.stat { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r); padding: 6px 8px; min-width: 0; }
+.stat b { display: block; font-size: 1.25rem; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.stat span { font-size: .74rem; color: var(--muted); }
+
 /* tree */
 .tree { font-size: .88rem; }
 .tree details { margin-left: 12px; }
@@ -206,6 +220,7 @@ select { padding-right: 4px; }
   <div class="group">
     <label class="inline" for="sel-mode"><span data-i18n="main.mode.label">Mode:</span>
       <select id="sel-mode" disabled>
+        <option value="political" data-i18n="main.mode.political">Political</option>
         <option value="province" data-i18n="main.mode.province">Provinces</option>
         <option value="area" data-i18n="main.mode.area">Area</option>
         <option value="region" data-i18n="main.mode.region">Region</option>
@@ -216,6 +231,13 @@ select { padding-right: 4px; }
       </select>
     </label>
     <button class="btn" id="btn-reset-view" disabled data-i18n="main.btn.reset_view">Reset view</button>
+  </div>
+  <div class="sep"></div>
+  <div class="group tools" role="radiogroup" aria-labelledby="tools-label">
+    <span class="inline muted" id="tools-label" data-i18n="tool.label">Click:</span>
+    <button class="seg" role="radio" aria-checked="true" data-tool="inspect" disabled data-i18n="tool.inspect">Inspect</button>
+    <button class="seg" role="radio" aria-checked="false" data-tool="territory" disabled data-i18n="tool.territory">Mark territory</button>
+    <button class="seg" role="radio" aria-checked="false" data-tool="forts" disabled data-i18n="tool.forts">Mark forts</button>
   </div>
   <div class="sep"></div>
   <div class="group">
@@ -253,6 +275,7 @@ select { padding-right: 4px; }
   <aside class="panel">
     <div class="tabs" role="tablist">
       <button role="tab" id="tab-info" aria-selected="true" data-pane="pane-info" data-i18n="tab.info">Province</button>
+      <button role="tab" id="tab-country" aria-selected="false" data-pane="pane-country" data-i18n="tab.country">Country</button>
       <button role="tab" id="tab-opt" aria-selected="false" data-pane="pane-opt" data-i18n="tab.opt">Optimize</button>
       <button role="tab" id="tab-tree" aria-selected="false" data-pane="pane-tree" data-i18n="tab.tree">Tree</button>
     </div>
@@ -277,7 +300,11 @@ select { padding-right: 4px; }
           <dt data-i18n="info.field.score" class="defrow">Defense score</dt><dd id="i-score" class="defrow"></dd>
         </dl>
         <div id="i-status"></div>
-        <label class="fortline" id="i-fortline"><input type="checkbox" id="i-fort"> <span data-i18n="info.fort_label">Has a fort (forts.txt)</span></label>
+        <dl class="kv" id="i-ownerrow">
+          <dt data-i18n="info.field.owner">Owner</dt><dd id="i-owner"></dd>
+        </dl>
+        <label class="fortline" id="i-terrline"><input type="checkbox" id="i-terr"> <span data-i18n="info.terr_label">Part of my territory</span></label>
+        <label class="fortline" id="i-fortline"><input type="checkbox" id="i-fort"> <span data-i18n="info.fort_label">Has a fort</span></label>
         <div class="row" id="i-actions">
           <button class="btn small" id="i-add-cov" data-i18n="info.btn.add_coverage">Add to coverage</button>
           <button class="btn small" id="i-add-req" data-i18n="info.btn.add_required">Add to required</button>
@@ -286,14 +313,46 @@ select { padding-right: 4px; }
           <div class="sublabel" data-i18n="info.neighbors">Neighbours</div>
           <div class="nbrs" id="i-nbrs"></div>
         </div>
-        <div style="display:grid;gap:6px">
-          <div class="sublabel">forts.txt</div>
-          <div class="row">
-            <button class="btn small" id="btn-forts-dl" data-i18n="forts.download">Download forts.txt</button>
-            <span class="hint" id="forts-count"></span>
-          </div>
-          <div class="hint" data-i18n="forts.note">Fort edits are kept in this browser. Download the file and put it in your map/ folder to use it elsewhere.</div>
+      </div>
+    </div>
+
+    <!-- My country -->
+    <div class="pane" id="pane-country" role="tabpanel" hidden>
+      <h2 data-i18n="country.title">My country</h2>
+      <div style="display:grid;gap:6px">
+        <div class="sublabel" data-i18n="save.title">Savegame</div>
+        <div class="row">
+          <button class="btn" id="btn-save" disabled data-i18n="save.load">Load savegame (.eu4)</button>
+          <button class="btn small" id="btn-save-clear" hidden data-i18n="save.clear">Back to game start</button>
+          <input type="file" id="in-save" accept=".eu4,.zip,application/zip,text/plain" hidden>
         </div>
+        <div class="hint" id="save-status" data-i18n="save.hint">Reads owners and forts for every country from a normal (non-Ironman) save. Usually in Documents/Paradox Interactive/Europa Universalis IV/save games.</div>
+      </div>
+      <div class="field">
+        <label for="sel-tag" style="font-weight:600;font-size:.92rem" data-i18n="country.tag">Country (tag)</label>
+        <select id="sel-tag" disabled></select>
+        <div class="hint" data-i18n="country.tag_hint">Choosing a country sets your territory to the provinces it owns. Adjust it with the "Mark territory" click tool.</div>
+      </div>
+      <div class="stats" id="country-stats"></div>
+      <div class="hint" data-i18n="country.tools_hint">Click tools (top bar): "Mark territory" adds or removes provinces, drag to paint several. "Mark forts" adds or removes a fort; its zone of control (the fort province and its neighbours) is shown at once in the Forts map mode.</div>
+      <div class="row">
+        <button class="btn small" id="btn-terr-clear" data-i18n="country.clear_terr">Clear territory</button>
+        <button class="btn small" id="btn-forts-reset" data-i18n="country.reset_forts">Reset forts</button>
+      </div>
+      <div style="display:grid;gap:6px">
+        <div class="sublabel" data-i18n="country.to_opt">Use in the optimizer</div>
+        <div class="row">
+          <button class="btn small" id="btn-cover-terr" data-i18n="country.cover_terr">Cover my territory</button>
+          <button class="btn small" id="btn-keep-forts" data-i18n="country.keep_forts">Keep my forts (required)</button>
+        </div>
+      </div>
+      <div style="display:grid;gap:6px">
+        <div class="sublabel">forts.txt</div>
+        <div class="row">
+          <button class="btn small" id="btn-forts-dl" data-i18n="forts.download">Download forts.txt</button>
+          <span class="hint" id="forts-count"></span>
+        </div>
+        <div class="hint" data-i18n="forts.note">Your territory and fort edits are kept in this browser. Download forts.txt to keep the fort list as a file.</div>
       </div>
     </div>
 
@@ -351,13 +410,20 @@ select { padding-right: 4px; }
           <option value="tiebreak" data-i18n="def.mode.tiebreak">Fewest forts, then the most defensible provinces</option>
           <option value="off" data-i18n="def.mode.off">Ignore terrain (original behaviour)</option>
         </select>
-        <div class="weights">
+        <label class="inline" for="f-priority" style="display:grid;gap:3px;font-size:.8rem"><span data-i18n="def.prio">What counts most</span>
+          <select id="f-priority">
+            <option value="balanced" data-i18n="def.prio.balanced">Balanced (weighted score)</option>
+            <option value="penalty" data-i18n="def.prio.penalty">Attacker penalty first</option>
+            <option value="localdef" data-i18n="def.prio.localdef">Local defensiveness first</option>
+          </select>
+        </label>
+        <div class="weights" id="weights">
           <label for="f-w-pen"><span data-i18n="def.w.pen">Points per attacker penalty pip</span>
             <input type="number" id="f-w-pen" min="0" step="1" value="10"></label>
           <label for="f-w-loc"><span data-i18n="def.w.loc">Points per 1% local defensiveness</span>
             <input type="number" id="f-w-loc" min="0" step="0.5" value="1"></label>
         </div>
-        <div class="hint" data-i18n="def.hint">Defense score = attacker penalty × first weight + local defensiveness (terrain + salt) × second weight. Mountains score 2×10 + 25 = 45, hills 1×10 + 10 = 20, salt adds 10.</div>
+        <div class="hint" id="def-hint"></div>
         <div class="hint" id="def-status"></div>
       </fieldset>
 
@@ -421,13 +487,13 @@ const I18N = {
     'info.hint': 'Click a province on the map to see its details.',
     'info.header': 'Province',
     'info.field.id': 'Province id', 'info.field.area': 'Area', 'info.field.region': 'Region', 'info.field.superregion': 'Superregion',
-    'info.fort_label': 'Has a fort (forts.txt)',
+    'info.fort_label': 'Has a fort',
     'info.neighbors': 'Neighbours', 'info.no_neighbors': 'No land neighbours.',
     'info.status.water': 'Water', 'info.status.wasteland': 'Wasteland', 'info.status.fort': 'Fort',
     'info.unknown': '(unknown)', 'info.unnamed': '(unnamed)',
     'info.btn.add_coverage': 'Add to coverage', 'info.btn.add_required': 'Add to required',
     'forts.download': 'Download forts.txt', 'forts.count': '{0} forts',
-    'forts.note': 'Fort edits are kept in this browser. Download the file and put it in your map/ folder to use it elsewhere.',
+    'forts.note': 'Your territory and fort edits are kept in this browser. Download forts.txt to keep the fort list as a file.',
     'opt.title': 'Fort Coverage Optimization',
     'opt.field.coverage': 'Coverage provinces',
     'opt.field.coverage.hint': 'province, Name_or_ID / area, Area_Name / region, Region_Name / superregion, Superregion_Name (one per line)',
@@ -499,6 +565,39 @@ const I18N = {
     'def.msg.partial': 'Terrain step stopped early ({0}); total defense score {1} may not be the best possible.',
     'def.total': 'defense {0}',
     'opt.output.defense': 'Defense',
+    'main.mode.political': 'Political',
+    'tool.label': 'Click:', 'tool.inspect': 'Inspect', 'tool.territory': 'Mark territory', 'tool.forts': 'Mark forts',
+    'tab.country': 'Country',
+    'info.field.owner': 'Owner', 'info.unowned': 'Unowned', 'info.terr_label': 'Part of my territory',
+    'country.title': 'My country', 'country.tag': 'Country (tag)', 'country.none': '— none —', 'country.provinces': '{0} provinces',
+    'country.tag_hint': 'Choosing a country sets your territory to the provinces it owns. Adjust it with the "Mark territory" click tool.',
+    'country.tools_hint': 'Click tools (top bar): "Mark territory" adds or removes provinces, drag to paint several. "Mark forts" adds or removes a fort; its zone of control (the fort province and its neighbours) appears at once in the Forts map mode.',
+    'country.clear_terr': 'Clear territory', 'country.reset_forts': 'Reset forts',
+    'country.to_opt': 'Use in the optimizer', 'country.cover_terr': 'Cover my territory', 'country.keep_forts': 'Keep my forts (required)',
+    'country.stat_terr': 'provinces', 'country.stat_forts': 'forts', 'country.stat_zoc': '{0} of {1} in a zone of control',
+    'country.no_terr': 'No territory yet. Pick a country above or use the "Mark territory" tool.',
+    'country.cover_done': 'Coverage set to your territory ({0} provinces).',
+    'country.keep_done': '{0} existing forts added as required forts.', 'country.keep_comment': 'existing forts {0}',
+    'save.title': 'Savegame', 'save.load': 'Load savegame (.eu4)', 'save.clear': 'Back to game start',
+    'save.hint': 'Reads owners and forts for every country from a normal (non-Ironman) save. Usually in Documents/Paradox Interactive/Europa Universalis IV/save games.',
+    'save.reading': 'Reading {0}…', 'save.parsing': 'Reading provinces and countries ({0} MB)…',
+    'save.loaded': '{0}: {1}, playing {2}. {3} owned provinces, {4} forts.',
+    'save.failed': 'Could not read the save: {0}',
+    'save.err_ironman': 'this is an Ironman (binary) save. Load a normal save, or convert it to text first (for example with pdx.tools).',
+    'save.err_format': 'this does not look like an EU4 save.', 'save.err_zip': 'the compressed save could not be opened.',
+    'save.err_browser': 'this browser cannot unpack compressed saves; use a current Chrome, Edge, Firefox or Safari.',
+    'save.err_noprov': 'no province owners matched this map. Is the save from the same game or mod as the loaded folder?',
+    'legend.political_start': 'Owners at game start', 'legend.political_save': 'Owners on {0}', 'legend.my_country': 'My country ({0})',
+    'legend.unowned': 'Unowned', 'legend.my_fort': 'My fort', 'legend.foreign_fort': 'Other fort', 'legend.territory': 'My territory',
+    'legend.zoc': 'Zone of control', 'legend.zoc_foreign': 'Other zone of control',
+    'parser.no_territory': 'territory selector used, but no territory is marked (Country tab).',
+    'def.prio': 'What counts most', 'def.prio.balanced': 'Balanced (weighted score)', 'def.prio.penalty': 'Attacker penalty first', 'def.prio.localdef': 'Local defensiveness first',
+    'def.hint.balanced': 'Score = attacker penalty × first weight + local defensiveness % (terrain + salt) × second weight. With the defaults mountains score 2×10 + 25 = 45, hills 1×10 + 10 = 20, salt adds 10. The fort count always stays minimal; the score only decides between equally small layouts.',
+    'def.hint.penalty': 'Provinces with a higher attacker penalty win; local defensiveness (terrain + salt) only breaks ties, so mountains (−2, +25%) stay on top. The fort count always stays minimal.',
+    'def.hint.localdef': 'Provinces with more local defensiveness (terrain + salt) win; attacker penalty only breaks ties, so mountains (−2, +25%) stay on top. The fort count always stays minimal.',
+    'def.total_pair': '−{0} pips / +{1}%',
+    'def.legend.balanced': 'Defense score', 'def.legend.penalty': 'Attacker penalty, then local def.', 'def.legend.localdef': 'Local def., then attacker penalty',
+    'def.legend.low': 'low', 'def.legend.high': 'high',
   },
   ru: {
     'main.mode.defense': 'Оборона (рельеф + соль)',
@@ -525,6 +624,39 @@ const I18N = {
     'def.msg.partial': 'Шаг с рельефом остановлен досрочно ({0}); сумма очков {1} может быть не лучшей.',
     'def.total': 'оборона {0}',
     'opt.output.defense': 'Оборона',
+    'main.mode.political': 'Политическая',
+    'tool.label': 'Клик:', 'tool.inspect': 'Просмотр', 'tool.territory': 'Отметить территорию', 'tool.forts': 'Отметить крепости',
+    'tab.country': 'Страна',
+    'info.field.owner': 'Владелец', 'info.unowned': 'Ничья', 'info.terr_label': 'Часть моей территории',
+    'country.title': 'Моя страна', 'country.tag': 'Страна (тег)', 'country.none': '— нет —', 'country.provinces': 'провинций: {0}',
+    'country.tag_hint': 'Выбор страны делает её провинции вашей территорией. Подправить можно инструментом «Отметить территорию».',
+    'country.tools_hint': 'Инструменты клика (верхняя панель): «Отметить территорию» добавляет или убирает провинции, протяните мышью, чтобы закрасить несколько. «Отметить крепости» ставит или убирает крепость; её зона контроля (провинция крепости и соседние) сразу видна в режиме «Форты».',
+    'country.clear_terr': 'Очистить территорию', 'country.reset_forts': 'Сбросить крепости',
+    'country.to_opt': 'Использовать в оптимизации', 'country.cover_terr': 'Покрыть мою территорию', 'country.keep_forts': 'Оставить мои крепости (обязательные)',
+    'country.stat_terr': 'провинций', 'country.stat_forts': 'крепостей', 'country.stat_zoc': '{0} из {1} в зоне контроля',
+    'country.no_terr': 'Территория не задана. Выберите страну выше или используйте инструмент «Отметить территорию».',
+    'country.cover_done': 'Покрытие задано вашей территорией (провинций: {0}).',
+    'country.keep_done': 'Существующих крепостей добавлено как обязательные: {0}.', 'country.keep_comment': 'существующие крепости {0}',
+    'save.title': 'Сохранение', 'save.load': 'Загрузить сохранение (.eu4)', 'save.clear': 'Вернуться к началу игры',
+    'save.hint': 'Считывает владельцев и крепости всех стран из обычного (не Ironman) сохранения. Обычно лежит в Документы/Paradox Interactive/Europa Universalis IV/save games.',
+    'save.reading': 'Чтение {0}…', 'save.parsing': 'Чтение провинций и стран ({0} МБ)…',
+    'save.loaded': '{0}: {1}, игрок {2}. Провинций с владельцем: {3}, крепостей: {4}.',
+    'save.failed': 'Не удалось прочитать сохранение: {0}',
+    'save.err_ironman': 'это сохранение Ironman (двоичное). Загрузите обычное сохранение или сначала переведите его в текст (например, через pdx.tools).',
+    'save.err_format': 'это не похоже на сохранение EU4.', 'save.err_zip': 'не удалось открыть сжатое сохранение.',
+    'save.err_browser': 'этот браузер не умеет распаковывать сжатые сохранения; используйте свежий Chrome, Edge, Firefox или Safari.',
+    'save.err_noprov': 'владельцы провинций не совпали с картой. Сохранение из той же игры или мода, что и загруженная папка?',
+    'legend.political_start': 'Владельцы на начало игры', 'legend.political_save': 'Владельцы на {0}', 'legend.my_country': 'Моя страна ({0})',
+    'legend.unowned': 'Ничья', 'legend.my_fort': 'Моя крепость', 'legend.foreign_fort': 'Чужая крепость', 'legend.territory': 'Моя территория',
+    'legend.zoc': 'Зона контроля', 'legend.zoc_foreign': 'Чужая зона контроля',
+    'parser.no_territory': 'указан селектор territory, но территория не отмечена (вкладка «Страна»).',
+    'def.prio': 'Что важнее', 'def.prio.balanced': 'Баланс (взвешенные очки)', 'def.prio.penalty': 'Сначала штраф атакующему', 'def.prio.localdef': 'Сначала местная обороноспособность',
+    'def.hint.balanced': 'Очки = штраф атакующему × первый вес + местная обороноспособность % (рельеф + соль) × второй вес. По умолчанию горы дают 2×10 + 25 = 45, холмы 1×10 + 10 = 20, соль добавляет 10. Число крепостей всегда минимально; очки лишь выбирают между одинаково малыми раскладками.',
+    'def.hint.penalty': 'Выигрывают провинции с большим штрафом атакующему; местная обороноспособность (рельеф + соль) лишь разрешает ничьи, поэтому горы (−2, +25%) остаются первыми. Число крепостей всегда минимально.',
+    'def.hint.localdef': 'Выигрывают провинции с большей местной обороноспособностью (рельеф + соль); штраф атакующему лишь разрешает ничьи, поэтому горы (−2, +25%) остаются первыми. Число крепостей всегда минимально.',
+    'def.total_pair': '−{0} пунктов / +{1}%',
+    'def.legend.balanced': 'Очки обороны', 'def.legend.penalty': 'Штраф атакующему, затем местная оборона', 'def.legend.localdef': 'Местная оборона, затем штраф атакующему',
+    'def.legend.low': 'мало', 'def.legend.high': 'много',
     'app.title': 'Оптимизатор расположения крепостей EU4',
     'app.subtitle': 'Оптимизатор крепостей',
     'menu.language': 'Язык:',
@@ -549,13 +681,13 @@ const I18N = {
     'info.hint': 'Нажмите на провинцию на карте, чтобы увидеть сведения о ней.',
     'info.header': 'Провинция',
     'info.field.id': 'ID провинции', 'info.field.area': 'Область', 'info.field.region': 'Регион', 'info.field.superregion': 'Суперрегион',
-    'info.fort_label': 'Есть крепость (forts.txt)',
+    'info.fort_label': 'Есть крепость',
     'info.neighbors': 'Соседи', 'info.no_neighbors': 'Нет сухопутных соседей.',
     'info.status.water': 'Вода', 'info.status.wasteland': 'Пустошь', 'info.status.fort': 'Крепость',
     'info.unknown': '(неизвестно)', 'info.unnamed': '(без имени)',
     'info.btn.add_coverage': 'Добавить в покрытие', 'info.btn.add_required': 'Добавить в обязательные',
     'forts.download': 'Скачать forts.txt', 'forts.count': 'фортов: {0}',
-    'forts.note': 'Изменения фортов хранятся в этом браузере. Скачайте файл и положите его в папку map/, чтобы использовать в другом месте.',
+    'forts.note': 'Территория и изменения крепостей хранятся в этом браузере. Скачайте forts.txt, чтобы сохранить список крепостей в файл.',
     'opt.title': 'Оптимизация покрытия крепостями',
     'opt.field.coverage': 'Покрываемые провинции',
     'opt.field.coverage.hint': 'province, Name_или_ID / area, Area_Name / region, Region_Name / superregion, Superregion_Name (один объект на строку)',
@@ -615,7 +747,8 @@ function applyI18n() {
   document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
   document.title = t('app.title');
-  if (M) { renderLegend(); if (selected != null) showInfo(selected); updateFortCount(); updateDefenseStatus(); }
+  updatePriorityUI();
+  if (M) { renderLegend(); if (selected != null) showInfo(selected); updateFortCount(); updateDefenseStatus(); refreshCountryPane(); }
 }
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -632,6 +765,7 @@ const COL = {
   black: abgr(0, 0, 0), white: abgr(255, 255, 255), water: abgr(50, 100, 200), fort: abgr(60, 200, 60),
   required: [220, 60, 60], preferred: [240, 150, 50], exceptional: [150, 60, 200], group: [240, 130, 200],
   def: [240, 220, 60], covPreview: [80, 220, 80],
+  foreignFort: abgr(120, 120, 120), territory: abgr(255, 226, 150), unowned: abgr(200, 196, 186), waste2: abgr(70, 66, 62),
 };
 function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function seededRGB(seed) { const r = mulberry32(seed); return [60 + Math.floor(r() * 160), 60 + Math.floor(r() * 160), 60 + Math.floor(r() * 160)]; }
@@ -820,7 +954,7 @@ let previewPalette = new Map(); // id -> [r,g,b]
 function pickFiles(fileList) {
   const wanted = ['provinces.bmp', 'definition.csv', 'area.txt', 'region.txt', 'superregion.txt', 'default.map', 'climate.txt', 'adjacencies.csv', 'forts.txt', 'terrain.txt', 'terrain.bmp'];
   const found = new Map();
-  const history = new Map(), tradegoods = [];
+  const history = new Map(), tradegoods = [], countryTags = [], countries = new Map();
   for (const f of fileList) {
     const name = f.name.toLowerCase();
     const path = (f._path || f.webkitRelativePath || f.name);
@@ -831,6 +965,9 @@ function pickFiles(fileList) {
       continue;
     }
     if (/(^|\/)common\/tradegoods\/[^/]+\.txt$/.test(lp)) { tradegoods.push(f); continue; }
+    if (/(^|\/)common\/country_tags\/[^/]+\.txt$/.test(lp)) { countryTags.push(f); continue; }
+    const cm = /(?:^|\/)common\/(countries\/[^/]+\.txt)$/.exec(lp);
+    if (cm) { if (!countries.has(cm[1])) countries.set(cm[1], f); continue; }
     if (!wanted.includes(name)) continue;
     const depth = path.split('/').length;
     const inMap = /(^|\/)map\//i.test(path) ? 0 : 1;   // prefer files inside a folder called map/
@@ -841,8 +978,26 @@ function pickFiles(fileList) {
   const defPath = found.get('definition.csv')?.path.split('/') || [];
   // name the map after the mod/game folder that contains map/
   out._root = (defPath.length >= 3 ? defPath[defPath.length - 3] : defPath[defPath.length - 2]) || 'map';
-  out._history = history; out._tradegoods = tradegoods;
+  out._history = history; out._tradegoods = tradegoods; out._countryTags = countryTags; out._countries = countries;
   return out;
+}
+
+/* ---------- countries (game-start owners and map colours) ---------- */
+// common/country_tags/*.txt:  SWE = "countries/Sweden.txt"
+function parseCountryTags(texts) {
+  const res = new Map();
+  for (const text of texts) for (const n of cwParse(text)) {
+    if (n.key && /^[A-Za-z0-9_-]{3}$/.test(n.key) && n.value) res.set(n.key.toUpperCase(), n.value.replace(/\\+/g, '/').toLowerCase());
+  }
+  return res;
+}
+// common/countries/Sweden.txt:  color = { 18 70 151 }
+function parseCountryColor(text) {
+  const n = cwParse(text).find(x => x.key === 'color');
+  const v = n ? bare(n).map(Number).filter(x => !isNaN(x)) : [];
+  if (v.length < 3) return null;
+  // a few mods write colours as 0–1 floats
+  return v.slice(0, 3).every(x => x <= 1) && v.some(x => x > 0 && x < 1) ? v.slice(0, 3).map(x => Math.round(x * 255)) : v.slice(0, 3).map(x => Math.max(0, Math.min(255, Math.round(x))));
 }
 
 /* ---------- terrain & trade goods (defense data) ---------- */
@@ -884,11 +1039,14 @@ function parseTradeGoods(texts) {
   }
   return res;
 }
-function historyTradeGood(text) {
-  // only the top-level (start date) value; dated blocks are ignored
-  const n = cwParse(text).find(x => x.key === 'trade_goods');
-  return n?.value || null;
+// Province history file: only top-level (start date) values; dated blocks are ignored.
+function historyInfo(text) {
+  const top = cwParse(text);
+  const val = (k) => top.find(x => x.key === k)?.value || null;
+  const fort = top.some(x => x.key && /^fort_/.test(x.key) && x.value === 'yes');
+  return { good: val('trade_goods'), owner: val('owner'), fort };
 }
+function historyTradeGood(text) { return historyInfo(text).good; }
 // terrain.bmp is an 8-bit indexed bitmap; we need raw palette indices, not colours.
 async function decodeIndexedBmp(file) {
   const buf = await file.arrayBuffer(), dv = new DataView(buf), bytes = new Uint8Array(buf);
@@ -1014,27 +1172,51 @@ async function loadMap(fileList, append = false) {
       await say(t('load.reading', 'common/tradegoods'));
       goodDef = parseTradeGoods(await Promise.all(F._tradegoods.map(readText)));
     }
+    const startOwner = new Array(N).fill(null);
+    const histForts = new Set();
     if (F._history.size) {
       await say(t('load.history', F._history.size));
       const entries = [...F._history];
       for (let i = 0; i < entries.length; i += 400) {
         await Promise.all(entries.slice(i, i + 400).map(async ([p, f]) => {
           if (p >= N) return;
-          const g = historyTradeGood(await readText(f));
-          if (g) { def.good[p] = g; def.goodLoc[p] = goodDef.get(g) || 0; }
+          const h = historyInfo(await readText(f));
+          if (h.good) { def.good[p] = h.good; def.goodLoc[p] = goodDef.get(h.good) || 0; }
+          if (h.owner) startOwner[p] = h.owner.toUpperCase();
+          if (h.fort) histForts.add(p);
         }));
         await say(t('load.history', `${Math.min(i + 400, entries.length)}/${entries.length}`));
       }
     }
     def.has = def.terrainFile || def.historyCount > 0;
 
-    M = { w, h, ids, provinces, byId, maxId, sea, waste, areas, regions, superregions, adj, border,
-      bbox: { bx0, by0, bx1, by1 }, provArea, areaRegion, regionSuper, nameToId, root: F._root, def, cats };
+    // country colours for the political map
+    const tagColor = new Map();
+    if (F._countryTags.length && F._countries.size) {
+      await say(t('load.reading', 'common/countries'));
+      const tagFile = parseCountryTags(await Promise.all(F._countryTags.map(readText)));
+      const used = new Set(startOwner.filter(Boolean));
+      await Promise.all([...tagFile].filter(([tag]) => used.has(tag)).map(async ([tag, path]) => {
+        const f = F._countries.get(path); if (!f) return;
+        const c = parseCountryColor(await readText(f)); if (c) tagColor.set(tag, c);
+      }));
+    }
 
-    // forts: browser copy wins over the file so edits survive reloads
+    M = { w, h, ids, provinces, byId, maxId, sea, waste, areas, regions, superregions, adj, border,
+      bbox: { bx0, by0, bx1, by1 }, provArea, areaRegion, regionSuper, nameToId, root: F._root, def, cats,
+      startOwner, owner: startOwner.slice(), tagColor, startTagColor: new Map(tagColor), histForts, fileForts, save: null };
+
+    // forts: browser edits > forts.txt > forts in history/provinces (game start)
     fortsKey = `eu4flo.forts.${F._root}.${provinces.length}.${w}x${h}`;
     const saved = store.get(fortsKey);
-    M.forts = saved != null ? new Set(JSON.parse(saved)) : fileForts;
+    M.forts = saved != null ? new Set(JSON.parse(saved)) : (fileForts.size ? new Set(fileForts) : new Set(histForts));
+    // my country: tag + territory, remembered per map
+    M.myTag = null; M.territory = new Set();
+    try {
+      const st = JSON.parse(store.get(fortsKey + '.territory') || 'null');
+      if (st) { M.myTag = st.tag || null; M.territory = new Set(st.ids || []); }
+    } catch {}
+    if (mode === 'province' && startOwner.some(Boolean)) mode = 'political';
 
     optSolution = new Set(); optPalette = new Map(); previewPalette = new Map(); selected = null;
     await say(t('load.render'));
@@ -1043,10 +1225,12 @@ async function loadMap(fileList, append = false) {
     renderMap(); fitView();
     $('empty').hidden = true; status.hidden = true;
     ['sel-mode', 'btn-reset-view', 'btn-export', 'btn-save-map', 'btn-save-view'].forEach(id => $(id).disabled = false);
+    $('btn-save').disabled = false; document.querySelectorAll('[data-tool]').forEach(b => b.disabled = false);
     $('hud').hidden = false;
     $('hud').textContent = t('main.load.summary', provinces.length, areas.length, regions.length, superregions.length, M.forts.size, F._root);
     $('info-empty').textContent = t('info.hint');
-    buildTree(); updateFortCount(); updateDefenseStatus();
+    $('sel-mode').value = mode;
+    buildTree(); updateFortCount(); updateDefenseStatus(); refreshCountryPane();
     if (dup.size) {
       const list = [...dup.values()].slice(0, 12).map(v => v.join('/')).join(', ') + (dup.size > 12 ? ' …' : '');
       showMsgs([{ kind: 'warn', text: t('map.warn_duplicate_colors', list) }]);
@@ -1059,12 +1243,33 @@ async function loadMap(fileList, append = false) {
 
 /* ---------- defense score ---------- */
 function defWeights() {
-  return { pen: Math.max(0, +$('f-w-pen').value || 0), loc: Math.max(0, +$('f-w-loc').value || 0) };
+  return { pen: Math.max(0, +$('f-w-pen').value || 0), loc: Math.max(0, +$('f-w-loc').value || 0), prio: $('f-priority').value };
 }
+const locPct = (p) => Math.round((M.def.loc[p] + M.def.goodLoc[p]) * 1000) / 10;
+// "first" modes rank provinces by one value and use the other only to break ties, so terrain that
+// gives both (mountains: −2 and +25%) stays on top in either mode.
 function defScore(p, W = defWeights()) {
-  const D = M.def; if (p > M.maxId) return 0;
-  return W.pen * D.pen[p] + W.loc * Math.round((D.loc[p] + D.goodLoc[p]) * 1000) / 10;
+  if (p > M.maxId) return 0;
+  const pen = M.def.pen[p], loc = locPct(p);
+  if (W.prio === 'penalty') return pen * 1000 + loc;
+  if (W.prio === 'localdef') return loc * 100 + pen;
+  return W.pen * pen + W.loc * loc;
 }
+function defLabel(p, W = defWeights()) {
+  return W.prio === 'balanced' ? fmtScore(defScore(p, W)) : `${M.def.pen[p] ? '−' + M.def.pen[p] : '0'} / +${locPct(p)}%`;
+}
+function defTotalLabel(ids, W = defWeights()) {
+  ids = [...ids];
+  if (W.prio === 'balanced') return fmtScore(ids.reduce((s, p) => s + defScore(p, W), 0));
+  const pen = ids.reduce((s, p) => s + M.def.pen[p], 0), loc = ids.reduce((s, p) => s + locPct(p), 0);
+  return t('def.total_pair', pen, fmtScore(loc));
+}
+function updatePriorityUI() {
+  const prio = $('f-priority').value;
+  $('weights').hidden = prio !== 'balanced';
+  $('def-hint').textContent = t('def.hint.' + prio);
+}
+$('f-priority').addEventListener('change', () => { updatePriorityUI(); saveDraft(); if (M && mode === 'defense') renderMap(); if (M && selected != null) showInfo(selected); });
 const fmtScore = (s) => (Math.round(s * 10) / 10).toString();
 function updateDefenseStatus() {
   const box = $('def-status'); if (!M) { box.textContent = ''; return; }
@@ -1105,7 +1310,7 @@ let selCanvas = null, selBox = null;
 function provinceColors() {
   const N = M.maxId + 1;
   const col = new Uint32Array(N).fill(COL.black);
-  const hatch = new Uint8Array(N);
+  const hatch = new Uint32Array(N);   // 0 = no hatching, else stripe colour
   const fromRGB = ([r, g, b]) => abgr(r, g, b);
   let borders = false;
   if (mode === 'province') {
@@ -1131,37 +1336,76 @@ function provinceColors() {
       const id = p.id;
       col[id] = M.waste.has(id) ? COL.black : M.sea.has(id) ? COL.water : ramp(max ? sc[id] / max : 0);
     }
-  } else {
+  } else if (mode === 'political') {
+    borders = 'country';
+    for (const p of M.provinces) {
+      const id = p.id;
+      if (M.waste.has(id)) col[id] = COL.waste2;
+      else if (M.sea.has(id)) col[id] = COL.water;
+      else { const o = M.owner[id]; col[id] = o ? fromRGB(tagRGB(o)) : COL.unowned; }
+    }
+  } else if (mode === 'forts') {
     borders = true;
-    const forts = mode === 'forts' ? M.forts : optSolution;
-    const palette = mode === 'forts' ? null : new Map([...optPalette, ...previewPalette]);
+    const hasTerr = M.territory.size > 0;
+    const mine = (id) => !hasTerr || M.territory.has(id);
     for (const p of M.provinces) {
       const id = p.id;
       if (M.waste.has(id)) col[id] = COL.black;
       else if (M.sea.has(id)) col[id] = COL.water;
-      else if (palette ? palette.has(id) : forts.has(id)) col[id] = palette ? fromRGB(palette.get(id)) : COL.fort;
+      else if (M.forts.has(id)) col[id] = mine(id) ? COL.fort : COL.foreignFort;
+      else {
+        col[id] = hasTerr && M.territory.has(id) ? COL.territory : COL.white;
+        let h = 0;
+        for (const n of M.adj.get(id) || []) if (M.forts.has(n)) { if (mine(n)) { h = COL.fort; break; } h = COL.foreignFort; }
+        hatch[id] = h;
+      }
+    }
+  } else {
+    borders = true;
+    const forts = optSolution;
+    const palette = new Map([...optPalette, ...previewPalette]);
+    for (const p of M.provinces) {
+      const id = p.id;
+      if (M.waste.has(id)) col[id] = COL.black;
+      else if (M.sea.has(id)) col[id] = COL.water;
+      else if (palette.has(id)) col[id] = fromRGB(palette.get(id));
       else {
         col[id] = COL.white;
         const nb = M.adj.get(id);
-        if (nb) for (const n of nb) if (forts.has(n)) { hatch[id] = 1; break; }
+        if (nb) for (const n of nb) if (forts.has(n)) { hatch[id] = COL.fort; break; }
       }
     }
   }
   return { col, hatch, borders };
 }
 
+// colour of a country: from the save, else common/countries, else a stable colour from the tag
+function tagRGB(tag) {
+  let c = M.tagColor.get(tag);
+  if (!c) { let hsh = 0; for (const ch of tag) hsh = (hsh * 31 + ch.charCodeAt(0)) | 0; c = seededRGB(hsh); M.tagColor.set(tag, c); }
+  return c;
+}
+function darken(c) { return abgr((c & 255) * 0.72 | 0, ((c >> 8) & 255) * 0.72 | 0, ((c >> 16) & 255) * 0.72 | 0); }
+
 function renderMap() {
   const { col, hatch, borders } = provinceColors();
   const { w, h, ids, border } = M;
   const out = new Uint32Array(imgData.data.buffer);
+  const owner = M.owner;
   for (let y = 0; y < h; y++) {
     const base = y * w;
     for (let x = 0; x < w; x++) {
       const i = base + x, id = ids[i];
       let c;
       if (id < 0) c = COL.black;
-      else if (borders && border[i]) c = COL.black;
-      else if (hatch[id] && ((x + y) & 7) < 4) c = COL.fort;
+      else if (borders && border[i]) {
+        if (borders === 'country') {
+          const r = x + 1 < w ? ids[i + 1] : id, b = y + 1 < h ? ids[i + w] : id;
+          const o = owner[id] || '', diff = (q) => q >= 0 && q !== id && (owner[q] || '') !== o;
+          c = diff(r) || diff(b) || M.sea.has(id) !== M.sea.has(r >= 0 ? r : id) ? COL.black : darken(col[id]);
+        } else c = COL.black;
+      }
+      else if (hatch[id] && ((x + y) & 7) < 4) c = hatch[id];
       else c = col[id];
       out[i] = c;
     }
@@ -1175,15 +1419,29 @@ function renderLegend() {
   const L = $('legend');
   const sw = (rgb, label, cls = '') => `<span><i class="sw ${cls}" style="${rgb ? `background:rgb(${rgb})` : ''}"></i>${esc(label)}</span>`;
   if (M && mode === 'defense') {
-    L.innerHTML = `<span><b>${esc(t('info.field.score'))}</b></span><span class="mono">0 <i class="ramp"></i> ${fmtScore(M.defMax || 0)}</span>`
+    const W = defWeights();
+    L.innerHTML = `<span><b>${esc(t('def.legend.' + W.prio))}</b></span><span class="mono">${esc(t('def.legend.low'))} <i class="ramp"></i> ${esc(t('def.legend.high'))}</span>`
       + sw('50,100,200', t('legend.water')) + sw('0,0,0', t('legend.waste'));
+    L.hidden = false; return;
+  }
+  if (M && mode === 'political') {
+    L.innerHTML = `<span><b>${esc(M.save ? t('legend.political_save', M.save.date) : t('legend.political_start'))}</b></span>`
+      + (M.myTag ? sw(tagRGB(M.myTag), t('legend.my_country', M.myTag)) : '') + sw('200,196,186', t('legend.unowned'));
     L.hidden = false; return;
   }
   if (!M || (mode !== 'forts' && mode !== 'optimization')) { L.hidden = true; return; }
   let html = '';
-  if (mode === 'forts') html += sw('60,200,60', t('legend.fort'));
-  else html += sw(COL.required, t('legend.required')) + sw(COL.preferred, t('legend.preferred')) + sw(COL.exceptional, t('legend.exceptional')) + sw(COL.group, t('legend.group')) + sw(COL.def, t('legend.default'));
-  html += sw('', t('legend.covered'), 'hatch') + sw('50,100,200', t('legend.water')) + sw('0,0,0', t('legend.waste'));
+  if (mode === 'forts') {
+    const terr = M.territory.size > 0;
+    html += sw('60,200,60', terr ? t('legend.my_fort') : t('legend.fort'));
+    if (terr) html += sw('120,120,120', t('legend.foreign_fort')) + sw('255,226,150', t('legend.territory'));
+    html += sw('', t('legend.zoc'), 'hatch');
+    if (terr) html += sw('', t('legend.zoc_foreign'), 'hatch grey');
+  } else {
+    html += sw(COL.required, t('legend.required')) + sw(COL.preferred, t('legend.preferred')) + sw(COL.exceptional, t('legend.exceptional')) + sw(COL.group, t('legend.group')) + sw(COL.def, t('legend.default'));
+    html += sw('', t('legend.covered'), 'hatch');
+  }
+  html += sw('50,100,200', t('legend.water')) + sw('0,0,0', t('legend.waste'));
   L.innerHTML = html; L.hidden = false;
 }
 
@@ -1250,7 +1508,7 @@ function provinceAt(clientX, clientY) {
 
 /* pan / zoom / click */
 const pointers = new Map();
-let drag = null, pinch = null;
+let drag = null, pinch = null, paint = null;
 view.addEventListener('pointerdown', (e) => {
   if (!M) return;
   view.setPointerCapture(e.pointerId);
@@ -1258,7 +1516,12 @@ view.addEventListener('pointerdown', (e) => {
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s: V.s, vx: V.x, vy: V.y, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+    drag = null; paint = null;
+  } else if (tool === 'territory' && e.button === 0) {
+    // territory brush: the first province decides whether this stroke adds or removes
+    const id = provinceAt(e.clientX, e.clientY);
     drag = null;
+    if (id >= 0 && isLand(id)) { paint = { add: !M.territory.has(id), last: id }; setTerritory(id, paint.add); }
   } else drag = { x: e.clientX, y: e.clientY, vx: V.x, vy: V.y, moved: e.button !== 0 };
 });
 view.addEventListener('pointermove', (e) => {
@@ -1270,6 +1533,11 @@ view.addEventListener('pointermove', (e) => {
     const cx = pinch.cx - r.left, cy = pinch.cy - r.top;
     V.x = cx - (cx - pinch.vx) * (ns / pinch.s); V.y = cy - (cy - pinch.vy) * (ns / pinch.s); V.s = ns;
     draw(); return;
+  }
+  if (paint) {
+    const id = provinceAt(e.clientX, e.clientY);
+    if (id >= 0 && id !== paint.last && isLand(id)) { paint.last = id; setTerritory(id, paint.add); }
+    return;
   }
   if (drag) {
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
@@ -1286,9 +1554,15 @@ const endPointer = (e) => {
   if (pointers.size < 2) pinch = null;
   if (drag && !drag.moved && e.type === 'pointerup' && pointers.size === 0) {
     const id = provinceAt(e.clientX, e.clientY);
-    if (id >= 0) select(id, false);
+    if (id >= 0) {
+      if (tool === 'forts' && isLand(id)) setFort(id, !M.forts.has(id));
+      select(id, false, tool !== 'inspect');
+    }
   }
-  if (pointers.size === 0) { drag = null; view.classList.remove('grabbing'); }
+  if (pointers.size === 0) {
+    if (paint) { paint = null; persistTerritory(); refreshCountryPane(); if (selected != null) showInfo(selected); }
+    drag = null; view.classList.remove('grabbing');
+  }
 };
 view.addEventListener('pointerup', endPointer);
 view.addEventListener('pointercancel', endPointer);
@@ -1307,12 +1581,12 @@ new ResizeObserver(resizeView).observe(view);
 /* =====================================================================
    Province info panel
    ===================================================================== */
-function select(id, center) {
+function select(id, center, keepTab) {
   selected = id;
   buildSelectionOverlay(id);
   if (center) centerOn(id); else draw();
   showInfo(id);
-  showTab('pane-info');
+  if (!keepTab) showTab('pane-info');
 }
 function showInfo(id) {
   const p = M.byId.get(id);
@@ -1333,12 +1607,17 @@ function showInfo(id) {
     const tl = Math.round(D.loc[id] * 100), gl = Math.round(D.goodLoc[id] * 100);
     $('i-loc').textContent = `+${tl + gl}%` + (gl ? ` (${t('def.terrain_part', tl)}, ${t('def.good_part', gl, D.good[id])})` : '');
     $('i-good').textContent = D.good[id] || (D.historyCount ? '—' : t('def.no_history_short'));
-    $('i-score').textContent = fmtScore(defScore(id));
+    $('i-score').textContent = defLabel(id);
   }
   $('i-status').innerHTML = isWater ? `<span class="chip water">${esc(t('info.status.water'))}</span>`
     : isWaste ? `<span class="chip waste">${esc(t('info.status.wasteland'))}</span>`
     : M.forts.has(id) ? `<span class="chip fort">${esc(t('info.status.fort'))}</span>` : '';
   const land = !isWater && !isWaste;
+  const own = id <= M.maxId ? M.owner[id] : null;
+  $('i-ownerrow').hidden = !land || !M.owner.some(Boolean);
+  $('i-owner').innerHTML = own ? `<i class="sw" style="display:inline-block;vertical-align:-2px;margin-right:6px;background:rgb(${tagRGB(own)})"></i>${esc(own)}` : esc(t('info.unowned'));
+  $('i-terrline').hidden = !land;
+  $('i-terr').checked = M.territory.has(id);
   $('i-fortline').hidden = !land; $('i-actions').hidden = !land; $('i-nbr-wrap').hidden = !land;
   $('i-fort').checked = M.forts.has(id);
   const nb = [...(M.adj.get(id) || [])].sort((a, b) => a - b);
@@ -1347,12 +1626,10 @@ function showInfo(id) {
     : `<span class="muted">${esc(t('info.no_neighbors'))}</span>`;
 }
 $('i-nbrs').addEventListener('click', (e) => { const b = e.target.closest('[data-goto]'); if (b) select(+b.dataset.goto, true); });
-$('i-fort').addEventListener('change', (e) => {
+$('i-fort').addEventListener('change', (e) => { if (selected != null) { setFort(selected, e.target.checked); showInfo(selected); } });
+$('i-terr').addEventListener('change', (e) => {
   if (selected == null) return;
-  if (e.target.checked) M.forts.add(selected); else M.forts.delete(selected);
-  store.set(fortsKey, JSON.stringify([...M.forts]));
-  updateFortCount(); showInfo(selected);
-  if (mode === 'forts') renderMap();
+  setTerritory(selected, e.target.checked); persistTerritory(); refreshCountryPane(); showInfo(selected);
 });
 function updateFortCount() { if (M) $('forts-count').textContent = t('forts.count', M.forts.size); }
 $('btn-forts-dl').addEventListener('click', () => {
@@ -1363,6 +1640,222 @@ $('btn-forts-dl').addEventListener('click', () => {
 function appendLine(area, line) { const ta = $(area); ta.value = ta.value.replace(/\s*$/, '') + (ta.value.trim() ? '\n' : '') + line; saveDraft(); }
 $('i-add-cov').addEventListener('click', () => { appendLine('f-coverage', `province, ${selected}`); setMode('optimization'); showTab('pane-opt'); });
 $('i-add-req').addEventListener('click', () => { appendLine('f-required', String(selected)); setMode('optimization'); showTab('pane-opt'); });
+
+/* =====================================================================
+   My country: territory, forts, click tools
+   ===================================================================== */
+let tool = 'inspect';
+let rafPending = false;
+function scheduleRender() {
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(() => { rafPending = false; if (M) renderMap(); });
+}
+function setTool(next) {
+  tool = next;
+  document.querySelectorAll('[data-tool]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.tool === next)));
+  view.classList.toggle('paint', next !== 'inspect');
+  if (next !== 'inspect' && M && mode !== 'forts') setMode('forts');
+}
+document.querySelectorAll('[data-tool]').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+function setTerritory(id, on) {
+  if (on) M.territory.add(id); else M.territory.delete(id);
+  if (mode === 'forts' || mode === 'political') scheduleRender();
+}
+function setFort(id, on) {
+  if (on) M.forts.add(id); else M.forts.delete(id);
+  store.set(fortsKey, JSON.stringify([...M.forts]));
+  updateFortCount(); refreshCountryPane();
+  if (mode === 'forts') scheduleRender();
+}
+function persistTerritory() { store.set(fortsKey + '.territory', JSON.stringify({ tag: M.myTag, ids: [...M.territory] })); }
+function myForts() { return [...M.forts].filter(p => M.territory.size ? M.territory.has(p) : true); }
+function territoryOf(tag) {
+  const s = new Set();
+  if (tag) for (const p of M.provinces) if (M.owner[p.id] === tag && isLand(p.id)) s.add(p.id);
+  return s;
+}
+function setTag(tag) {
+  M.myTag = tag || null;
+  M.territory = territoryOf(M.myTag);
+  persistTerritory(); refreshCountryPane();
+  if (mode === 'forts' || mode === 'political') renderMap();
+}
+function refreshCountryPane() {
+  if (!M) return;
+  const counts = new Map();
+  for (const p of M.provinces) { const o = M.owner[p.id]; if (o && isLand(p.id)) counts.set(o, (counts.get(o) || 0) + 1); }
+  if (M.myTag && !counts.has(M.myTag)) counts.set(M.myTag, 0);
+  const sel = $('sel-tag');
+  const opts = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  sel.innerHTML = `<option value="">${esc(t('country.none'))}</option>` + opts.map(([tag, n]) =>
+    `<option value="${esc(tag)}">${esc(tag)}${M.save && tag === M.save.player ? ' ★' : ''} · ${esc(t('country.provinces', n))}</option>`).join('');
+  sel.value = M.myTag || '';
+  sel.disabled = !opts.length;
+  // stats: territory size, forts in it, provinces inside a zone of control
+  const terr = M.territory, mine = new Set(myForts());
+  let covered = 0;
+  for (const p of terr) {
+    if (mine.has(p)) { covered++; continue; }
+    for (const n of M.adj.get(p) || []) if (mine.has(n)) { covered++; break; }
+  }
+  const stat = (v, label) => `<div class="stat"><b>${v}</b><span>${esc(label)}</span></div>`;
+  $('country-stats').innerHTML = terr.size
+    ? stat(terr.size, t('country.stat_terr')) + stat(mine.size, t('country.stat_forts')) + stat(`${Math.round(100 * covered / terr.size)}%`, t('country.stat_zoc', covered, terr.size))
+    : `<div class="hint" style="grid-column:1/-1">${esc(t('country.no_terr'))}</div>`;
+  $('btn-save-clear').hidden = !M.save;
+  $('save-status').textContent = M.save ? t('save.loaded', M.save.name, M.save.date, M.save.player || '?', M.save.provinces, M.save.forts) : t('save.hint');
+  updateFortCount();
+}
+$('sel-tag').addEventListener('change', (e) => setTag(e.target.value));
+$('btn-terr-clear').addEventListener('click', () => { if (!M) return; M.territory = new Set(); persistTerritory(); refreshCountryPane(); if (mode === 'forts') renderMap(); });
+$('btn-forts-reset').addEventListener('click', () => {
+  if (!M) return;
+  M.forts = M.save ? new Set(M.save.fortSet) : (M.fileForts.size ? new Set(M.fileForts) : new Set(M.histForts));
+  store.set(fortsKey, JSON.stringify([...M.forts]));
+  refreshCountryPane(); if (selected != null) showInfo(selected);
+  if (mode === 'forts') renderMap();
+});
+$('btn-cover-terr').addEventListener('click', () => {
+  if (!M || !M.territory.size) { showTab('pane-opt'); showMsgs([{ kind: 'warn', text: t('country.no_terr') }]); return; }
+  $('f-coverage').value = 'territory, mine'; saveDraft(); showTab('pane-opt');
+  showMsgs([{ kind: 'ok', text: t('country.cover_done', M.territory.size) }]);
+});
+$('btn-keep-forts').addEventListener('click', () => {
+  if (!M) return;
+  const ids = myForts().sort((a, b) => a - b);
+  $('f-required').value = `# ${t('country.keep_comment', M.myTag || '')}\n` + ids.join('\n'); saveDraft(); showTab('pane-opt');
+  showMsgs([{ kind: 'ok', text: t('country.keep_done', ids.length) }]);
+});
+
+/* ---------- savegame (.eu4) ---------- */
+async function inflateRaw(bytes) {
+  if (typeof DecompressionStream === 'undefined') throw new Error(t('save.err_browser'));
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+// Minimal ZIP reader (compressed saves are zip archives with "meta" and "gamestate" entries).
+async function unzipEntries(bytes, wanted) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let eocd = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error(t('save.err_zip'));
+  const count = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  const out = {};
+  for (let k = 0; k < count; k++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+    const nlen = dv.getUint16(p + 28, true), xlen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true);
+    const local = dv.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(bytes.subarray(p + 46, p + 46 + nlen));
+    p += 46 + nlen + xlen + clen;
+    if (!wanted.includes(name)) continue;
+    const start = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true);
+    const data = bytes.subarray(start, start + csize);
+    out[name] = method === 0 ? data : method === 8 ? await inflateRaw(data) : null;
+  }
+  return out;
+}
+async function readSaveText(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const head = (b) => String.fromCharCode(...b.subarray(0, 6));
+  const dec = new TextDecoder('windows-1252');
+  let parts;
+  if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
+    const z = await unzipEntries(bytes, ['meta', 'gamestate']);
+    if (!z.gamestate) throw new Error(t('save.err_zip'));
+    parts = [z.meta, z.gamestate].filter(Boolean);
+  } else parts = [bytes];
+  if (parts.some(b => head(b) === 'EU4bin')) throw new Error(t('save.err_ironman'));
+  if (!parts.some(b => head(b) === 'EU4txt')) throw new Error(t('save.err_format'));
+  return parts.map(b => dec.decode(b)).join('\n');
+}
+// Walks one Clausewitz block starting at the '{' at `pos`; calls onKV(path, key, value) for key=value
+// pairs and onBare(path, token) for bare tokens. path = keys of the enclosing blocks.
+function walkBlock(text, pos, onKV, onBare) {
+  const path = [];
+  let pending = null, i = pos;
+  const n = text.length;
+  const isWs = (c) => c === 32 || c === 9 || c === 10 || c === 13;
+  const readToken = () => {
+    if (text.charCodeAt(i) === 34) { const j = text.indexOf('"', i + 1); const v = text.slice(i + 1, j < 0 ? n : j); i = j < 0 ? n : j + 1; return v; }
+    const st = i;
+    while (i < n) { const c = text.charCodeAt(i); if (isWs(c) || c === 61 || c === 123 || c === 125 || c === 34) break; i++; }
+    return text.slice(st, i);
+  };
+  while (i < n) {
+    let c = text.charCodeAt(i);
+    if (isWs(c)) { i++; continue; }
+    if (c === 123) { path.push(pending); pending = null; i++; continue; }
+    if (c === 125) { path.pop(); i++; if (!path.length) return i; continue; }
+    const tok = readToken();
+    if (!tok && i < n && text.charCodeAt(i) !== 61) { i++; continue; }
+    let j = i; while (j < n && isWs(text.charCodeAt(j))) j++;
+    if (text.charCodeAt(j) === 61) {
+      i = j + 1; while (i < n && isWs(text.charCodeAt(i))) i++;
+      if (text.charCodeAt(i) === 123) { pending = tok; continue; }
+      onKV(path, tok, readToken());
+    } else if (onBare) onBare(path, tok);
+  }
+  return i;
+}
+function parseSave(text, N) {
+  const player = /\nplayer\s*=\s*"([^"]+)"/.exec(text)?.[1] || null;
+  const date = /\ndate\s*=\s*([\d.]+)/.exec(text)?.[1] || '?';
+  const owner = new Array(N).fill(null), forts = new Set(), colors = new Map();
+  const ps = text.search(/\nprovinces\s*=\s*\{/);
+  if (ps < 0) throw new Error(t('save.err_format'));
+  let provinces = 0;
+  walkBlock(text, text.indexOf('{', ps), (path, key, value) => {
+    if (path.length === 2 && key === 'owner') { const id = Math.abs(parseInt(path[1], 10)); if (id < N) { owner[id] = value.toUpperCase(); provinces++; } }
+    else if (path.length === 3 && path[2] === 'buildings' && /^fort/.test(key) && value === 'yes') { const id = Math.abs(parseInt(path[1], 10)); if (id < N) forts.add(id); }
+  });
+  const cs = text.search(/\ncountries\s*=\s*\{/);
+  if (cs >= 0) {
+    const tmp = new Map();
+    walkBlock(text, text.indexOf('{', cs), () => {}, (path, tok) => {
+      if (path.length === 4 && path[2] === 'colors' && path[3] === 'map_color') {
+        const a = tmp.get(path[1]) || []; if (a.length < 3) { a.push(+tok); tmp.set(path[1], a); }
+      }
+    });
+    for (const [tag, a] of tmp) if (a.length === 3 && a.every(x => !isNaN(x))) colors.set(tag.toUpperCase(), a);
+  }
+  return { player: player && player.toUpperCase(), date, owner, forts, colors, provinces };
+}
+$('btn-save').addEventListener('click', () => $('in-save').click());
+$('in-save').addEventListener('change', async (e) => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f || !M) return;
+  const st = $('save-status');
+  try {
+    st.innerHTML = `<span class="spinner"></span>${esc(t('save.reading', f.name))}`; await tick();
+    const text = await readSaveText(f);
+    st.innerHTML = `<span class="spinner"></span>${esc(t('save.parsing', Math.round(text.length / 1e6)))}`; await tick();
+    const sv = parseSave(text, M.maxId + 1);
+    if (!sv.provinces) throw new Error(t('save.err_noprov'));
+    M.owner = sv.owner;
+    M.tagColor = new Map([...M.startTagColor, ...sv.colors]);
+    M.forts = new Set(sv.forts);
+    store.set(fortsKey, JSON.stringify([...M.forts]));
+    M.save = { name: f.name, date: sv.date, player: sv.player, provinces: sv.provinces, forts: sv.forts.size, fortSet: sv.forts };
+    setTag(sv.player && sv.owner.includes(sv.player) ? sv.player : M.myTag);
+    if (selected != null) showInfo(selected);
+    renderMap();
+  } catch (err) {
+    console.error(err);
+    st.textContent = t('save.failed', err.message || err);
+  }
+});
+$('btn-save-clear').addEventListener('click', () => {
+  if (!M) return;
+  M.owner = M.startOwner.slice(); M.tagColor = new Map(M.startTagColor); M.save = null;
+  M.forts = M.fileForts.size ? new Set(M.fileForts) : new Set(M.histForts);
+  store.set(fortsKey, JSON.stringify([...M.forts]));
+  setTag(M.myTag);
+  if (selected != null) showInfo(selected);
+  renderMap();
+});
 
 /* =====================================================================
    Selectors (ported from Optimization/SelectorParser.cs)
@@ -1400,6 +1893,9 @@ function parseCoverage(text, errors) {
       const s = M.superregions.find(x => matchName(x.name, arg, '_superregion'));
       if (!s) { errors.push(t('parser.unknown_superregion', arg)); continue; }
       s.regions.forEach(rn => regionByName(rn)?.areas.forEach(an => areaByName(an)?.ids.forEach(add)));
+    } else if (['territory', 't'].includes(kind)) {
+      if (!M.territory.size) errors.push(t('parser.no_territory'));
+      M.territory.forEach(add);
     } else errors.push(t('parser.unknown_selector', kind));
   }
   return res;
@@ -1432,7 +1928,7 @@ const cfgFields = { CoverageText: 'f-coverage', RequiredText: 'f-required', Pref
 function currentConfig() {
   const c = {}; for (const [k, id] of Object.entries(cfgFields)) c[k] = $(id).value;
   c.Mode = $('f-mode').value; c.TimeLimitSeconds = Math.max(1, +$('f-time').value || 10);
-  c.Terrain = $('f-terrain').value; c.WeightAttackerPenalty = +$('f-w-pen').value; c.WeightLocalDefensiveness = +$('f-w-loc').value;
+  c.Terrain = $('f-terrain').value; c.TerrainPriority = $('f-priority').value; c.WeightAttackerPenalty = +$('f-w-pen').value; c.WeightLocalDefensiveness = +$('f-w-loc').value;
   return c;
 }
 function applyConfig(c) {
@@ -1441,6 +1937,8 @@ function applyConfig(c) {
   $('f-mode').value = typeof c.Mode === 'number' ? modes[c.Mode] : (modes.includes(c.Mode) ? c.Mode : 'NoAdjacent');
   if (c.TimeLimitSeconds) $('f-time').value = c.TimeLimitSeconds;
   if (c.Terrain === 'off' || c.Terrain === 'tiebreak') $('f-terrain').value = c.Terrain;
+  if (['balanced', 'penalty', 'localdef'].includes(c.TerrainPriority)) $('f-priority').value = c.TerrainPriority;
+  updatePriorityUI();
   if (c.WeightAttackerPenalty != null) $('f-w-pen').value = c.WeightAttackerPenalty;
   if (c.WeightLocalDefensiveness != null) $('f-w-loc').value = c.WeightLocalDefensiveness;
   saveDraft();
@@ -1533,13 +2031,16 @@ function runOptimization(forceWholeMap = false) {
   // Phase 2 (terrain): keep the fort count found in phase 1 (__K__), keep the same number of
   // preferred forts, and among those layouts pick the one with the highest total defense score.
   const W = defWeights();
-  const useTerrain = cfg.Terrain === 'tiebreak' && M.def.has && (W.pen > 0 || W.loc > 0);
+  const useTerrain = cfg.Terrain === 'tiebreak' && M.def.has && (W.prio !== 'balanced' || W.pen > 0 || W.loc > 0);
   let lp2 = null;
   if (useTerrain) {
     const P = [];
     let l2 = '', k = 0;
+    const sc = new Map([...cand].map(p => [p, Math.round(defScore(p, W) * 10)]));
+    // the preferred bonus must outweigh any terrain total so preferred forts keep priority
+    const prefBonus = 1 + [...sc.values()].reduce((a, b) => a + Math.max(0, b), 0);
     for (const p of cand) {
-      const coef = Math.round(defScore(p, W) * 10) + (preferred.has(p) ? 1e6 : 0);
+      const coef = sc.get(p) + (preferred.has(p) ? prefBonus : 0);
       if (coef > 0) { l2 += ` + ${coef} ${x(p)}`; if (++k % 12 === 0) { P.push('   ' + l2); l2 = ''; } }
     }
     if (l2) P.push('   ' + l2);
@@ -1568,7 +2069,6 @@ function runOptimization(forceWholeMap = false) {
     const sol1 = new Set((r.chosen1 || []).filter(p => cand.has(p)));
     if (!covers(sol) && covers(sol1)) sol = sol1;
     const valid = covers(sol);
-    r.base2 = [...sol1].reduce((s, p) => s + defScore(p, W), 0);
     if (!valid) {
       const timeout = /time limit/i.test(r.status);
       showMsgs([{ kind: 'error', text: timeout ? t('solver.warn.no_solution_time') : t('solver.warn.failed', r.status) }, ...notes]);
@@ -1581,9 +2081,9 @@ function runOptimization(forceWholeMap = false) {
     const optimal = r.status === 'Optimal';
     const out = [{ kind: optimal ? 'ok' : 'warn', text: optimal ? t('opt.msg.complete', sol.size, secs) : t('solver.warn.time_limit', sol.size, secs) }];
     if (lp2) {
-      const total = [...sol].reduce((s, p) => s + defScore(p, W), 0);
-      if (r.status2 === 'Optimal') out.push({ kind: 'ok', text: t('def.msg.done', fmtScore(total), fmtScore(r.base2 != null ? r.base2 : total)) });
-      else if (r.status2) out.push({ kind: 'warn', text: t('def.msg.partial', r.status2, fmtScore(total)) });
+      const total = defTotalLabel(sol, W);
+      if (r.status2 === 'Optimal') out.push({ kind: 'ok', text: t('def.msg.done', total, defTotalLabel(sol1, W)) });
+      else if (r.status2) out.push({ kind: 'warn', text: t('def.msg.partial', r.status2, total) });
     }
     showMsgs([...out, ...notes]);
     showResults(sol, roleOf);
@@ -1598,10 +2098,10 @@ function showResults(sol, roleOf) {
     if (!D.has) return '';
     const bits = [D.cat[p] || '?'];
     if (D.goodLoc[p] > 0) bits.push(D.good[p]);
-    return `<td title="${esc(bits.join(' + '))}">${fmtScore(defScore(p, W))} <span class="tag">${esc(bits.join(' + '))}</span></td>`;
+    return `<td title="${esc(bits.join(' + '))}">${esc(defLabel(p, W))} <span class="tag">${esc(bits.join(' + '))}</span></td>`;
   };
   const rows = ids.map(p => `<tr data-goto="${p}"><td class="mono">${p}</td><td>${esc(M.byId.get(p)?.name || '')}</td><td>${esc(t('opt.role.' + roleOf(p)))}</td>${defCell(p)}</tr>`).join('');
-  const total = D.has ? ` · ${esc(t('def.total', fmtScore(ids.reduce((s, p) => s + defScore(p, W), 0))))}` : '';
+  const total = D.has ? ` · ${esc(t('def.total', defTotalLabel(ids, W)))}` : '';
   $('results').innerHTML = `<div class="row" style="justify-content:space-between;margin-bottom:6px"><b>${esc(t('opt.output.count', ids.length))}${total}</b>
     <span class="row"><button class="btn small" id="btn-copy">${esc(t('opt.btn.copy'))}</button></span></div>
     <div style="overflow-x:auto"><table><thead><tr><th>${esc(t('opt.output.id'))}</th><th>${esc(t('opt.output.name'))}</th><th>${esc(t('opt.output.role'))}</th>${D.has ? `<th>${esc(t('opt.output.defense'))}</th>` : ''}</tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -1772,7 +2272,7 @@ async function entriesToFiles(entries) {
     if (depth > 3) return;
     for (const e of await readDir(entry)) {
       // only descend into the dropped folder itself and folders named map (or common/ on the way to it)
-      if (e.isDirectory && !/^(map|common|history|provinces|tradegoods)$/i.test(e.name)) continue;
+      if (e.isDirectory && !/^(map|common|history|provinces|tradegoods|country_tags|countries)$/i.test(e.name)) continue;
       await walk(e, depth + 1);
     }
   }
